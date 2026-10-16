@@ -10,8 +10,8 @@ import { CustomerProfile, CustomerProfileDocument } from '../database/schemas/cu
 
 async function seed() {
   console.log('--- Initializing AurumSave Safe Seed Runner ---');
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
-    console.error('FATAL: Seed runner aborted. Seeding is prohibited in production without ALLOW_PRODUCTION_SEED=true.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: Seed runner aborted. Seeding evaluation accounts is strictly prohibited in production mode under all circumstances.');
     process.exit(1);
   }
   const app = await NestFactory.createApplicationContext(AppModule);

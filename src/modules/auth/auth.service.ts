@@ -8,7 +8,9 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { Role, KycStatus, AuditAction, PurityGrade } from '@aurumsave/shared';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { CustomerProfile, CustomerProfileDocument } from '../../database/schemas/customer-profile.schema';
@@ -24,6 +26,7 @@ export class AuthService {
     @InjectModel(GoldHolding.name) private readonly holdingModel: Model<GoldHoldingDocument>,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly configService: ConfigService,
   ) {}
 
   async register(dto: RegisterDto, ipAddress?: string, userAgent?: string) {
@@ -35,6 +38,10 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(dto.password, salt);
 
+    const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    const autoVerify = this.configService.get<string>('AUTO_VERIFY_EMAILS') === 'true' || !isProd;
+    const emailVerificationToken = !autoVerify ? crypto.randomBytes(32).toString('hex') : undefined;
+
     const user = await this.userModel.create({
       email: dto.email.toLowerCase(),
       passwordHash,
@@ -43,7 +50,8 @@ export class AuthService {
       role: Role.CUSTOMER, // Strict server-enforced role boundary: public registration can only create customer accounts
       kycStatus: KycStatus.NOT_SUBMITTED,
       isActive: true,
-      isEmailVerified: true, // Auto-verified for seamless MVP experience
+      isEmailVerified: autoVerify,
+      emailVerificationToken,
     });
 
     // Initialize customer profile if role is customer
@@ -104,6 +112,11 @@ export class AuthService {
 
     if (!user.isActive) {
       throw new UnauthorizedException('This account has been suspended. Please contact AurumSave compliance.');
+    }
+
+    const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    if (isProd && !user.isEmailVerified) {
+      throw new UnauthorizedException('Email verification is required before logging into production.');
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.passwordHash);
@@ -304,10 +317,24 @@ export class AuthService {
     return { message: 'Password has been reset successfully. You may now log in.' };
   }
 
-  async verifyEmail(userId: string, token?: string) {
-    const user = await this.userModel.findById(userId);
+  async verifyEmail(userIdOrToken: string, token?: string) {
+    if (!userIdOrToken && !token) {
+      throw new BadRequestException('Verification token or user identification is required');
+    }
+
+    let user: UserDocument | null = null;
+    const lookupToken = token || (userIdOrToken && !/^[0-9a-fA-F]{24}$/.test(userIdOrToken) ? userIdOrToken : null);
+
+    if (lookupToken) {
+      user = await this.userModel.findOne({ emailVerificationToken: lookupToken }).select('+emailVerificationToken');
+    }
+
+    if (!user && userIdOrToken && /^[0-9a-fA-F]{24}$/.test(userIdOrToken)) {
+      user = await this.userModel.findById(userIdOrToken);
+    }
+
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new BadRequestException('Invalid or expired email verification token');
     }
 
     user.isEmailVerified = true;

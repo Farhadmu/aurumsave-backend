@@ -46,6 +46,43 @@ export class KycService {
       throw new BadRequestException('File size exceeds the 5MB maximum limit');
     }
 
+    // Inspect magic bytes to prevent disguised executable payloads
+    if (!file.buffer || file.buffer.length < 4) {
+      throw new BadRequestException('Invalid or empty file payload');
+    }
+
+    const buf = file.buffer;
+    let isMagicValid = false;
+
+    if (file.mimetype === 'image/jpeg' && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+      isMagicValid = true;
+    } else if (
+      file.mimetype === 'image/png' &&
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47
+    ) {
+      isMagicValid = true;
+    } else if (
+      file.mimetype === 'image/webp' &&
+      buf.toString('ascii', 0, 4) === 'RIFF' &&
+      buf.toString('ascii', 8, 12) === 'WEBP'
+    ) {
+      isMagicValid = true;
+    } else if (
+      file.mimetype === 'application/pdf' &&
+      buf.toString('ascii', 0, 4) === '%PDF'
+    ) {
+      isMagicValid = true;
+    }
+
+    if (!isMagicValid) {
+      throw new BadRequestException(
+        'File content signature (magic bytes) does not match declared MIME type. Potential disguised payload rejected.',
+      );
+    }
+
     const ext = path.extname(file.originalname) || '.jpg';
     const storageKey = `kyc_${userId}_${uuidv4().substring(0, 12)}${ext}`;
     const filePath = path.join(STORAGE_DIR, storageKey);
@@ -60,12 +97,36 @@ export class KycService {
     };
   }
 
-  getDocumentPath(storageKey: string): { filePath: string; mimeType: string } {
+  async getDocumentPath(
+    storageKey: string,
+    requestingUser?: { id: string; role: Role },
+  ): Promise<{ filePath: string; mimeType: string }> {
     const safeKey = path.basename(storageKey);
     const filePath = path.join(STORAGE_DIR, safeKey);
 
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Document file not found in private storage');
+    }
+
+    if (requestingUser) {
+      const isStaffWithKycAccess = [
+        Role.KYC_OFFICER,
+        Role.ADMIN,
+        Role.SUPER_ADMIN,
+      ].includes(requestingUser.role);
+
+      if (requestingUser.role === Role.CUSTOMER) {
+        // Customer can ONLY access their own document
+        const isOwnDoc = safeKey.startsWith(`kyc_${requestingUser.id}_`);
+        if (!isOwnDoc) {
+          throw new ForbiddenException('Cross-customer document access is strictly forbidden');
+        }
+      } else if (!isStaffWithKycAccess) {
+        // Auditors, Finance, Support agents cannot view private KYC identity documents
+        throw new ForbiddenException(
+          `Users with role ${requestingUser.role} are not authorized to inspect confidential customer KYC documents`,
+        );
+      }
     }
 
     const ext = path.extname(safeKey).toLowerCase();

@@ -4,6 +4,7 @@ import { Order, OrderSchema } from '../../database/schemas/order.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { QuoteModule } from '../quotes/quote.module';
 import { LedgerModule } from '../ledger/ledger.module';
+import { PriceModule } from '../prices/price.module';
 import { OrderService } from './order.service';
 import { OrderController } from './order.controller';
 
@@ -15,6 +16,7 @@ import { OrderController } from './order.controller';
     ]),
     QuoteModule,
     LedgerModule,
+    PriceModule,
   ],
   controllers: [OrderController],
   providers: [OrderService],

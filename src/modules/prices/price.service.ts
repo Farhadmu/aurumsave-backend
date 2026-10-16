@@ -27,7 +27,7 @@ export class PriceService implements OnModuleInit {
   async ensureInitialRates() {
     const count = await this.priceModel.countDocuments();
     if (count === 0) {
-      this.logger.log('Seeding initial BAJUS gold benchmark prices...');
+      this.logger.log('Seeding initial demo gold benchmark prices (unverified placeholder until feed configured)...');
       const now = new Date();
       const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24h validity
 
@@ -37,14 +37,14 @@ export class PriceService implements OnModuleInit {
           purity,
           buyPricePerGramPoisha: Math.round(rate.buyBdt * CONVERSIONS.POISHA_PER_BDT),
           sellPricePerGramPoisha: Math.round(rate.sellBdt * CONVERSIONS.POISHA_PER_BDT),
-          source: 'BAJUS_OFFICIAL_BENCHMARK',
+          source: 'DEMO_BENCHMARK_SEED (Unverified)',
           effectiveAt: now,
           expiresAt: expires,
           isStale: false,
           spreadPercentage: Number((((rate.buyBdt - rate.sellBdt) / rate.buyBdt) * 100).toFixed(2)),
         });
       }
-      this.logger.log('Initial gold prices seeded successfully.');
+      this.logger.log('Demo gold benchmark prices seeded with explicit unverified status.');
     }
   }
 

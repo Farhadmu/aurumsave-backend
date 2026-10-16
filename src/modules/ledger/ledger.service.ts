@@ -46,6 +46,17 @@ export class LedgerService {
       });
     }
 
+    // Check if ledger entry already exists for this paymentId to prevent duplicate credit
+    const existingEntry = await this.ledgerModel.findOne({
+      paymentId: params.paymentId,
+      type: LedgerEntryType.GOLD_PURCHASE,
+    });
+    if (existingEntry) {
+      this.logger.warn(`Ledger entry for payment ${params.paymentId} already exists. Returning existing entry.`);
+      const currentHolding = await this.holdingModel.findOne({ userId: userObjectId, purity: params.purity });
+      return { entry: existingEntry, holding: currentHolding! };
+    }
+
     // Update holding balances with exact precision arithmetic
     const newWeightMg = holding.weightMilligramsAvailable + params.weightMilligrams;
     const newTotalCostPoisha = holding.totalCostPoisha + params.costPoisha;
@@ -66,20 +77,43 @@ export class LedgerService {
 
     const entryId = `LED-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
 
-    const entry = await this.ledgerModel.create({
-      entryId,
-      userId: userObjectId,
-      orderId: params.orderId,
-      paymentId: params.paymentId,
-      type: LedgerEntryType.GOLD_PURCHASE,
-      debitPoisha: params.costPoisha,
-      creditPoisha: 0,
-      debitGoldMg: 0,
-      creditGoldMg: params.weightMilligrams,
-      runningGoldBalanceMg: prevGoldMg + params.weightMilligrams,
-      runningFiatBalancePoisha: prevFiatPoisha, // Fiat was paid externally via MFS
-      description: params.description,
-    });
+    let entry: LedgerEntryDocument;
+    try {
+      entry = await this.ledgerModel.create({
+        entryId,
+        userId: userObjectId,
+        orderId: params.orderId,
+        paymentId: params.paymentId,
+        type: LedgerEntryType.GOLD_PURCHASE,
+        debitPoisha: params.costPoisha,
+        creditPoisha: 0,
+        debitGoldMg: 0,
+        creditGoldMg: params.weightMilligrams,
+        runningGoldBalanceMg: prevGoldMg + params.weightMilligrams,
+        runningFiatBalancePoisha: prevFiatPoisha, // Fiat was paid externally via MFS
+        description: params.description,
+      });
+    } catch (err: any) {
+      // E11000 duplicate key rollback compensation
+      if (err.code === 11000) {
+        this.logger.warn(`Duplicate key on ledger entry for payment ${params.paymentId}. Compensating holding.`);
+        await this.holdingModel.updateOne(
+          { userId: userObjectId, purity: params.purity },
+          {
+            $inc: {
+              weightMilligramsAvailable: -params.weightMilligrams,
+              totalCostPoisha: -params.costPoisha,
+            },
+          },
+        );
+        const resolved = await this.ledgerModel.findOne({
+          paymentId: params.paymentId,
+          type: LedgerEntryType.GOLD_PURCHASE,
+        });
+        return { entry: resolved!, holding };
+      }
+      throw err;
+    }
 
     this.logger.log(
       `[LEDGER CREDIT] User: ${params.userId} +${params.weightMilligrams}mg (${params.purity}) for ${params.costPoisha} poisha`,
@@ -310,22 +344,35 @@ export class LedgerService {
   }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
     const userObjectId = new Types.ObjectId(params.userId);
 
-    const holding = await this.holdingModel.findOne({
-      userId: userObjectId,
-      purity: params.purity,
-    });
+    const holding = await this.holdingModel.findOneAndUpdate(
+      {
+        userId: userObjectId,
+        purity: params.purity,
+        weightMilligramsAvailable: { $gte: params.weightMilligrams },
+      },
+      {
+        $inc: {
+          weightMilligramsAvailable: -params.weightMilligrams,
+          totalCostPoisha: -params.refundPoisha,
+        },
+      },
+      { new: true },
+    );
 
-    if (!holding || holding.weightMilligramsAvailable < params.weightMilligrams) {
+    if (!holding) {
       throw new BadRequestException('Cannot reverse gold purchase: gold has already been withdrawn or sold');
     }
 
-    const newWeightMg = holding.weightMilligramsAvailable - params.weightMilligrams;
-    const newTotalCostPoisha = Math.max(0, holding.totalCostPoisha - params.refundPoisha);
-    const newAvgCostPerMg = newWeightMg > 0 ? Math.round(newTotalCostPoisha / newWeightMg) : 0;
-
-    holding.weightMilligramsAvailable = newWeightMg;
-    holding.totalCostPoisha = newTotalCostPoisha;
-    holding.averageCostPerMilligramPoisha = newAvgCostPerMg;
+    if (holding.weightMilligramsAvailable <= 0) {
+      holding.weightMilligramsAvailable = 0;
+      holding.totalCostPoisha = 0;
+      holding.averageCostPerMilligramPoisha = 0;
+    } else {
+      holding.totalCostPoisha = Math.max(0, holding.totalCostPoisha);
+      holding.averageCostPerMilligramPoisha = Math.round(
+        holding.totalCostPoisha / holding.weightMilligramsAvailable,
+      );
+    }
     await holding.save();
 
     const lastEntry = await this.ledgerModel

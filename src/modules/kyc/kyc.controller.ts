@@ -88,13 +88,14 @@ export class KycController {
   }
 
   @Get('compliance/kyc/documents/:storageKey')
-  @Roles(Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Secure document viewing stream for authorized compliance officers' })
+  @Roles(Role.CUSTOMER, Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Secure document viewing stream for document owners and compliance officers' })
   async viewDocument(
     @Param('storageKey') storageKey: string,
+    @CurrentUser() user: any,
     @Res() res: Response,
   ) {
-    const doc = this.kycService.getDocumentPath(storageKey);
+    const doc = await this.kycService.getDocumentPath(storageKey, user);
     res.setHeader('Content-Type', doc.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${storageKey}"`);
     res.sendFile(doc.filePath);

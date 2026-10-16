@@ -130,9 +130,22 @@ export class PaymentService {
     // Verify cryptographic signature from external gateway
     this.verifyWebhookSignature(payment, dto);
 
-    // Prevent sandbox sessions from settling real gold in production
+    // Priority 0: Prevent sandbox sessions from settling real gold in production
     if (isProd && payment.gatewayResponseMetadata?.mode === 'SANDBOX_BANGLADESH_FINTECH_MOCK') {
       throw new BadRequestException('Sandbox payment session cannot create verified gold holdings in production mode');
+    }
+
+    // Enforce unique provider transaction reference check across all payments
+    if (dto.gatewayTransactionId) {
+      const existingTxn = await this.paymentModel.findOne({
+        gatewayTransactionId: dto.gatewayTransactionId,
+        paymentId: { $ne: dto.paymentId },
+      });
+      if (existingTxn) {
+        throw new ConflictException(
+          `Gateway transaction reference ${dto.gatewayTransactionId} has already been settled for payment ${existingTxn.paymentId}`,
+        );
+      }
     }
 
     const order = await this.orderModel.findOne({ orderId: payment.orderId });
@@ -163,30 +176,75 @@ export class PaymentService {
       return { success: false, message: 'Payment recorded as failed' };
     }
 
-    // Mark payment as successful
-    payment.status = PaymentStatus.SUCCESSFUL;
-    payment.gatewayTransactionId = dto.gatewayTransactionId;
-    payment.verifiedAt = new Date();
-    await payment.save();
-
-    // Transition Order status
-    order.status = OrderStatus.COMPLETED;
-    order.completedAt = new Date();
-    order.statusHistory.push(
+    // Atomic conditional update on payment to prevent concurrent race conditions
+    const updatedPayment = await this.paymentModel.findOneAndUpdate(
       {
-        status: OrderStatus.PAYMENT_CONFIRMED,
-        note: `Payment verified via ${payment.gateway} (Ref: ${payment.gatewayTransactionId})`,
-        timestamp: new Date(),
+        paymentId: dto.paymentId,
+        status: { $ne: PaymentStatus.SUCCESSFUL },
       },
       {
-        status: OrderStatus.COMPLETED,
-        note: `Allocated ${order.weightMilligrams / 1000}g ${order.purity} gold to customer vault`,
-        timestamp: new Date(),
+        $set: {
+          status: PaymentStatus.SUCCESSFUL,
+          gatewayTransactionId: dto.gatewayTransactionId,
+          verifiedAt: new Date(),
+        },
       },
+      { new: true },
     );
-    await order.save();
 
-    // Safe Double-Entry Ledger Commitment
+    if (!updatedPayment) {
+      const current = await this.paymentModel.findOne({ paymentId: dto.paymentId });
+      if (current?.status === PaymentStatus.SUCCESSFUL) {
+        return {
+          success: true,
+          message: 'Payment already processed and settled',
+          paymentId: current.paymentId,
+        };
+      }
+      throw new ConflictException('Payment status conflict: payment already resolved');
+    }
+
+    // Atomic conditional update on order
+    const updatedOrder = await this.orderModel.findOneAndUpdate(
+      {
+        orderId: payment.orderId,
+        status: OrderStatus.AWAITING_PAYMENT,
+      },
+      {
+        $set: {
+          status: OrderStatus.COMPLETED,
+          completedAt: new Date(),
+        },
+        $push: {
+          statusHistory: {
+            $each: [
+              {
+                status: OrderStatus.PAYMENT_CONFIRMED,
+                note: `Payment verified via ${payment.gateway} (Ref: ${dto.gatewayTransactionId})`,
+                timestamp: new Date(),
+              },
+              {
+                status: OrderStatus.COMPLETED,
+                note: `Allocated ${order.weightMilligrams / 1000}g ${order.purity} gold to customer vault`,
+                timestamp: new Date(),
+              },
+            ],
+          },
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedOrder) {
+      this.logger.warn(`Order ${payment.orderId} was already resolved during settlement`);
+      return {
+        success: true,
+        message: 'Payment verified and order already completed',
+        paymentId: updatedPayment.paymentId,
+      };
+    }
+
+    // Safe Double-Entry Ledger Commitment (guaranteed idempotent)
     await this.ledgerService.creditGoldPurchase({
       userId: order.userId.toString(),
       orderId: order.orderId,
@@ -206,7 +264,7 @@ export class PaymentService {
       details: {
         paymentId: payment.paymentId,
         gateway: payment.gateway,
-        txnId: payment.gatewayTransactionId,
+        txnId: dto.gatewayTransactionId,
         goldMg: order.weightMilligrams,
       },
     });
@@ -224,9 +282,17 @@ export class PaymentService {
     const isProd = this.configService.get<string>('NODE_ENV') === 'production';
     const allowSandbox = this.configService.get<string>('ALLOW_SANDBOX_PAYMENTS') === 'true';
 
-    if (isProd && !allowSandbox) {
+    // Priority 0: Production Sandbox Isolation
+    // Sandbox payment simulation must always be denied when NODE_ENV=production, regardless of ALLOW_SANDBOX_PAYMENTS.
+    if (isProd) {
       throw new ForbiddenException(
-        'Payment simulation is strictly disabled in production mode. Real payments require certified webhook callbacks.',
+        'Sandbox payment simulation is strictly prohibited in production mode under all circumstances.',
+      );
+    }
+
+    if (!allowSandbox) {
+      throw new ForbiddenException(
+        'Sandbox payment simulation is disabled. ALLOW_SANDBOX_PAYMENTS must be set to true.',
       );
     }
 
@@ -271,33 +337,67 @@ export class PaymentService {
       return { success: false, message: 'Sandbox payment recorded as failed' };
     }
 
-    // Mark payment as successful with explicit sandbox mode flag
-    payment.status = PaymentStatus.SUCCESSFUL;
-    payment.gatewayTransactionId = `SIM-TXN-${Date.now()}-${uuidv4().substring(0, 6).toUpperCase()}`;
-    payment.verifiedAt = new Date();
-    payment.gatewayResponseMetadata = {
-      ...payment.gatewayResponseMetadata,
-      isSandboxSimulation: true,
-      simulatedAt: new Date().toISOString(),
-    };
-    await payment.save();
+    const simTxnId = `SIM-TXN-${Date.now()}-${uuidv4().substring(0, 6).toUpperCase()}`;
 
-    // Transition Order status
-    order.status = OrderStatus.COMPLETED;
-    order.completedAt = new Date();
-    order.statusHistory.push(
+    // Atomic conditional update on payment
+    const updatedPayment = await this.paymentModel.findOneAndUpdate(
       {
-        status: OrderStatus.PAYMENT_CONFIRMED,
-        note: `Simulated payment verified via ${payment.gateway} (Sandbox Ref: ${payment.gatewayTransactionId})`,
-        timestamp: new Date(),
+        paymentId: dto.paymentId,
+        status: { $ne: PaymentStatus.SUCCESSFUL },
       },
       {
-        status: OrderStatus.COMPLETED,
-        note: `Allocated ${order.weightMilligrams / 1000}g ${order.purity} gold to customer vault (Sandbox)`,
-        timestamp: new Date(),
+        $set: {
+          status: PaymentStatus.SUCCESSFUL,
+          gatewayTransactionId: simTxnId,
+          verifiedAt: new Date(),
+          gatewayResponseMetadata: {
+            ...payment.gatewayResponseMetadata,
+            isSandboxSimulation: true,
+            simulatedAt: new Date().toISOString(),
+          },
+        },
       },
+      { new: true },
     );
-    await order.save();
+
+    if (!updatedPayment) {
+      return {
+        success: true,
+        message: 'Payment already processed and settled',
+        paymentId: payment.paymentId,
+      };
+    }
+
+    // Atomic conditional update on order
+    const updatedOrder = await this.orderModel.findOneAndUpdate(
+      {
+        orderId: payment.orderId,
+        status: OrderStatus.AWAITING_PAYMENT,
+      },
+      {
+        $set: {
+          status: OrderStatus.COMPLETED,
+          completedAt: new Date(),
+        },
+        $push: {
+          statusHistory: {
+            $each: [
+              {
+                status: OrderStatus.PAYMENT_CONFIRMED,
+                note: `Simulated payment verified via ${payment.gateway} (Sandbox Ref: ${simTxnId})`,
+                timestamp: new Date(),
+              },
+              {
+                status: OrderStatus.COMPLETED,
+                note: `Allocated ${order.weightMilligrams / 1000}g ${order.purity} gold to customer vault (Sandbox)`,
+                timestamp: new Date(),
+              },
+            ],
+          },
+        },
+      },
+      { new: true },
+    );
 
     // Safe Double-Entry Ledger Commitment
     await this.ledgerService.creditGoldPurchase({
@@ -368,16 +468,25 @@ export class PaymentService {
     officerRole: Role,
     reason?: string,
   ) {
-    const payment = await this.paymentModel.findOne({ paymentId });
-    if (!payment) {
-      throw new NotFoundException('Payment not found');
+    const updatedPayment = await this.paymentModel.findOneAndUpdate(
+      {
+        paymentId,
+        status: { $ne: PaymentStatus.REFUNDED },
+      },
+      {
+        $set: {
+          status: PaymentStatus.REFUNDED,
+          failureReason: reason || 'Refunded by operations officer',
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedPayment) {
+      throw new BadRequestException('This payment has already been refunded or does not exist');
     }
 
-    if (payment.status === PaymentStatus.REFUNDED) {
-      throw new BadRequestException('This payment has already been refunded');
-    }
-
-    const order = await this.orderModel.findOne({ orderId: payment.orderId });
+    const order = await this.orderModel.findOne({ orderId: updatedPayment.orderId });
     if (!order) {
       throw new NotFoundException('Associated order not found');
     }
@@ -387,35 +496,37 @@ export class PaymentService {
       await this.ledgerService.reverseGoldPurchase({
         userId: order.userId.toString(),
         orderId: order.orderId,
-        paymentId: payment.paymentId,
+        paymentId: updatedPayment.paymentId,
         purity: order.purity,
         weightMilligrams: order.weightMilligrams,
-        refundPoisha: payment.amountPoisha,
+        refundPoisha: updatedPayment.amountPoisha,
         description: `Refund & gold reversal for Order #${order.orderId}: ${reason || 'Customer requested / authorized refund'}`,
       });
     }
 
-    payment.status = PaymentStatus.REFUNDED;
-    payment.failureReason = reason || 'Refunded by operations officer';
-    await payment.save();
-
-    order.status = OrderStatus.REFUNDED;
-    order.statusHistory.push({
-      status: OrderStatus.REFUNDED,
-      note: `Refund processed by ${officerRole} (Ref: ${officerId}). Reason: ${reason || 'N/A'}`,
-      timestamp: new Date(),
-    });
-    await order.save();
+    await this.orderModel.findOneAndUpdate(
+      { orderId: updatedPayment.orderId },
+      {
+        $set: { status: OrderStatus.REFUNDED },
+        $push: {
+          statusHistory: {
+            status: OrderStatus.REFUNDED,
+            note: `Refund processed by ${officerRole} (Ref: ${officerId}). Reason: ${reason || 'N/A'}`,
+            timestamp: new Date(),
+          },
+        },
+      },
+    );
 
     await this.auditService.log({
       actorId: officerId,
       actorRole: officerRole,
       action: AuditAction.DISPUTE_RESOLVED,
       entityType: 'Payment',
-      entityId: payment.paymentId,
+      entityId: updatedPayment.paymentId,
       details: {
         orderId: order.orderId,
-        amountPoisha: payment.amountPoisha,
+        amountPoisha: updatedPayment.amountPoisha,
         reversedGoldMg: order.weightMilligrams,
         reason,
       },
@@ -424,7 +535,7 @@ export class PaymentService {
     return {
       success: true,
       message: 'Payment refunded and gold holdings reversed cleanly',
-      paymentId: payment.paymentId,
+      paymentId: updatedPayment.paymentId,
       orderId: order.orderId,
       status: PaymentStatus.REFUNDED,
     };

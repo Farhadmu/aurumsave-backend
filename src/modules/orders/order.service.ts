@@ -14,6 +14,7 @@ import { User, UserDocument } from '../../database/schemas/user.schema';
 import { QuoteService } from '../quotes/quote.service';
 import { AuditService } from '../audit/audit.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { PriceService } from '../prices/price.service';
 import { CreateOrderDto, FilterOrdersDto } from './order.dto';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class OrderService {
     private readonly quoteService: QuoteService,
     private readonly auditService: AuditService,
     private readonly ledgerService: LedgerService,
+    private readonly priceService: PriceService,
   ) {}
 
   async createOrder(userId: string, dto: CreateOrderDto): Promise<OrderDocument> {
@@ -46,6 +48,14 @@ export class OrderService {
 
     // Validate quote validity and ownership
     const quote = await this.quoteService.getValidQuote(dto.quoteId, userId);
+
+    // Defense-in-depth: Re-verify current live market rate has not expired or become stale
+    const currentRate = await this.priceService.getRateForPurity(quote.purity);
+    if (currentRate.isStale || new Date() > new Date(currentRate.expiresAt)) {
+      throw new BadRequestException(
+        `Gold benchmark price for ${quote.purity} has expired since quote was generated. Order creation halted to prevent stale financial executions.`,
+      );
+    }
 
     // Strict KYC verification check for sell orders
     if (quote.orderType === OrderType.SELL && user.kycStatus !== KycStatus.APPROVED) {

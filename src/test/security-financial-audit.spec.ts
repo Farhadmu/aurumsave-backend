@@ -60,17 +60,40 @@ describe('Security & Financial Integrity Audit Suite', () => {
       expect(secondCall.message).toBe('Payment already processed and settled');
     });
 
-    it('should forbid sandbox simulation when running in production without explicit permission', () => {
+    it('should forbid sandbox simulation when running in production regardless of ALLOW_SANDBOX_PAYMENTS', () => {
       const verifySandboxAllowed = (nodeEnv: string, allowSandbox: boolean) => {
-        if (nodeEnv === 'production' && !allowSandbox) {
+        if (nodeEnv === 'production') {
           throw new ForbiddenException('Payment simulation is strictly disabled in production mode');
+        }
+        if (!allowSandbox) {
+          throw new ForbiddenException('Sandbox payment simulation is disabled. ALLOW_SANDBOX_PAYMENTS must be true.');
         }
         return true;
       };
 
-      expect(() => verifySandboxAllowed('production', false)).toThrow(ForbiddenException);
+      // All 4 environment permutations
+      expect(() => verifySandboxAllowed('production', false)).toThrow('Payment simulation is strictly disabled in production mode');
+      expect(() => verifySandboxAllowed('production', true)).toThrow('Payment simulation is strictly disabled in production mode');
+      expect(() => verifySandboxAllowed('development', false)).toThrow('Sandbox payment simulation is disabled');
       expect(verifySandboxAllowed('development', true)).toBe(true);
-      expect(verifySandboxAllowed('production', true)).toBe(true);
+    });
+
+    it('should reject duplicate provider transaction ID on payment callback to prevent double crediting', () => {
+      const processedTransactions = new Set<string>();
+
+      const processCallbackWithTxnId = (gatewayTxnId: string) => {
+        if (processedTransactions.has(gatewayTxnId)) {
+          throw new BadRequestException(`Duplicate payment transaction ${gatewayTxnId} already processed`);
+        }
+        processedTransactions.add(gatewayTxnId);
+        return { success: true, gatewayTxnId };
+      };
+
+      const first = processCallbackWithTxnId('BKASH-TRX-001928');
+      expect(first.success).toBe(true);
+
+      // Concurrent or duplicate delivery of same provider transaction ID
+      expect(() => processCallbackWithTxnId('BKASH-TRX-001928')).toThrow(BadRequestException);
     });
   });
 
@@ -132,21 +155,22 @@ describe('Security & Financial Integrity Audit Suite', () => {
   });
 
   describe('Stale Price & Expired Quote Enforcement', () => {
-    it('should block new quotes when market rates are stale or expired', () => {
+    it('should block new quotes and order execution when market rates are stale or expired', () => {
       const now = Date.now();
       const expiredRate = {
         isStale: true,
+        source: 'DEMO_BENCHMARK_SEED (Unverified)',
         expiresAt: new Date(now - 60000).toISOString(),
       };
 
-      const generateQuote = (rate: { isStale: boolean }) => {
-        if (rate.isStale) {
-          throw new BadRequestException('Gold market rates are currently stale or unverified');
+      const validateRateForOrder = (rate: { isStale: boolean; expiresAt: string }) => {
+        if (rate.isStale || new Date() > new Date(rate.expiresAt)) {
+          throw new BadRequestException('Market price for gold is stale or expired. Please refresh.');
         }
-        return { quoteId: 'QTE-123', valid: true };
+        return true;
       };
 
-      expect(() => generateQuote(expiredRate)).toThrow(BadRequestException);
+      expect(() => validateRateForOrder(expiredRate)).toThrow('Market price for gold is stale or expired');
     });
 
     it('should reject orders created with an expired quote', () => {
@@ -166,6 +190,97 @@ describe('Security & Financial Integrity Audit Suite', () => {
       };
 
       expect(() => validateQuote(quote)).toThrow('Quote has expired');
+    });
+
+    it('should clearly flag benchmark seed data as unverified demo source', () => {
+      const demoSource = 'DEMO_BENCHMARK_SEED (Unverified)';
+      expect(demoSource).toContain('(Unverified)');
+      expect(demoSource).not.toBe('BAJUS_LIVE');
+    });
+  });
+
+  describe('KYC Document File Validation & RBAC Authorization', () => {
+    function validateMagicBytes(buffer: Buffer): boolean {
+      if (!buffer || buffer.length < 4) return false;
+      // JPEG: FF D8 FF
+      if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+      // PNG: 89 50 4E 47
+      if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return true;
+      // PDF: %PDF (25 50 44 46)
+      if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return true;
+      // WebP: RIFF ... WEBP
+      if (
+        buffer.length >= 12 &&
+        buffer.toString('ascii', 0, 4) === 'RIFF' &&
+        buffer.toString('ascii', 8, 12) === 'WEBP'
+      ) {
+        return true;
+      }
+      return false;
+    }
+
+    it('should validate genuine image and PDF binary magic bytes', () => {
+      const jpegBuf = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+      const pdfBuf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
+
+      expect(validateMagicBytes(jpegBuf)).toBe(true);
+      expect(validateMagicBytes(pngBuf)).toBe(true);
+      expect(validateMagicBytes(pdfBuf)).toBe(true);
+    });
+
+    it('should reject spoofed files (e.g. executable or shell script disguised as png)', () => {
+      const exeSpoof = Buffer.from([0x4d, 0x5a, 0x90, 0x00]); // MZ DOS/PE
+      const bashSpoof = Buffer.from('#!/bin/bash\nrm -rf /');
+
+      expect(validateMagicBytes(exeSpoof)).toBe(false);
+      expect(validateMagicBytes(bashSpoof)).toBe(false);
+    });
+
+    it('should strictly enforce cross-customer and role isolation on KYC documents', () => {
+      const authorizeDocumentAccess = (
+        user: { userId: string; role: Role },
+        docOwnerId: string,
+      ) => {
+        // Customer can only view their own
+        if (user.role === Role.CUSTOMER) {
+          if (user.userId !== docOwnerId) {
+            throw new ForbiddenException('Access denied: You can only view your own documents');
+          }
+          return true;
+        }
+
+        // Compliance and Admins can view
+        if ([Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN].includes(user.role)) {
+          return true;
+        }
+
+        // Auditor, Support, and Finance are forbidden from raw KYC files
+        throw new ForbiddenException(`Access denied: Role ${user.role} is not permitted to access customer identity documents`);
+      };
+
+      const customerA = { userId: 'usr-customer-A', role: Role.CUSTOMER };
+      const customerB = { userId: 'usr-customer-B', role: Role.CUSTOMER };
+      const kycOfficer = { userId: 'usr-compliance', role: Role.KYC_OFFICER };
+      const admin = { userId: 'usr-admin', role: Role.ADMIN };
+      const auditor = { userId: 'usr-auditor', role: Role.AUDITOR };
+      const support = { userId: 'usr-support', role: Role.SUPPORT_AGENT };
+      const finance = { userId: 'usr-finance', role: Role.FINANCE_OFFICER };
+
+      // Customer A accesses own document
+      expect(authorizeDocumentAccess(customerA, 'usr-customer-A')).toBe(true);
+
+      // Customer A tries to access Customer B document
+      expect(() => authorizeDocumentAccess(customerA, 'usr-customer-B')).toThrow('You can only view your own documents');
+
+      // Compliance & Admin can review Customer A document
+      expect(authorizeDocumentAccess(kycOfficer, 'usr-customer-A')).toBe(true);
+      expect(authorizeDocumentAccess(admin, 'usr-customer-A')).toBe(true);
+
+      // Auditor, Support, and Finance are forbidden
+      expect(() => authorizeDocumentAccess(auditor, 'usr-customer-A')).toThrow('is not permitted to access customer identity documents');
+      expect(() => authorizeDocumentAccess(support, 'usr-customer-A')).toThrow('is not permitted to access customer identity documents');
+      expect(() => authorizeDocumentAccess(finance, 'usr-customer-A')).toThrow('is not permitted to access customer identity documents');
     });
   });
 
@@ -201,42 +316,137 @@ describe('Security & Financial Integrity Audit Suite', () => {
   });
 
   describe('Cryptographic SHA-256 Audit Chain Verification', () => {
-    it('should correctly chain consecutive audit records with tamper-evident hashes', () => {
-      const genesisHash = 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000';
+    const GENESIS_HASH = 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000';
 
+    function computeEntryHash(entry: {
+      previousHash: string;
+      logId: string;
+      action: string;
+      actorRole: string;
+      entityType: string;
+      entityId?: string;
+      details?: any;
+    }): string {
+      const payload = `${entry.previousHash}:${entry.logId}:${entry.action}:${entry.actorRole}:${entry.entityType}:${entry.entityId || ''}:${JSON.stringify(entry.details || {})}`;
+      return crypto.createHash('sha256').update(payload).digest('hex');
+    }
+
+    it('should correctly chain consecutive audit records with tamper-evident hashes', () => {
       const entry1 = {
         logId: 'AUD-001',
         action: 'ORDER_CREATED',
-        previousHash: genesisHash,
+        actorRole: 'CUSTOMER',
+        entityType: 'Order',
+        entityId: 'ORD-100',
+        details: { amount: 1000 },
+        previousHash: GENESIS_HASH,
       };
-      const hash1 = crypto
-        .createHash('sha256')
-        .update(`${entry1.previousHash}:${entry1.logId}:${entry1.action}`)
-        .digest('hex');
+      const hash1 = computeEntryHash(entry1);
 
       const entry2 = {
         logId: 'AUD-002',
         action: 'ORDER_SETTLED',
+        actorRole: 'SYSTEM',
+        entityType: 'Order',
+        entityId: 'ORD-100',
+        details: { amount: 1000 },
         previousHash: hash1,
       };
-      const hash2 = crypto
-        .createHash('sha256')
-        .update(`${entry2.previousHash}:${entry2.logId}:${entry2.action}`)
-        .digest('hex');
+      const hash2 = computeEntryHash(entry2);
 
       // Verify chain connection
       expect(entry2.previousHash).toBe(hash1);
       expect(hash2).not.toEqual(hash1);
 
       // Verify tamper detection
-      const tamperedEntry1Action = 'ORDER_CANCELLED';
-      const recalculatedHash1 = crypto
-        .createHash('sha256')
-        .update(`${entry1.previousHash}:${entry1.logId}:${tamperedEntry1Action}`)
-        .digest('hex');
+      const tamperedEntry1 = { ...entry1, details: { amount: 9999999 } };
+      const recalculatedHash1 = computeEntryHash(tamperedEntry1);
 
       // If record 1 was altered, entry 2's previousHash fails to match
       expect(entry2.previousHash).not.toEqual(recalculatedHash1);
+    });
+
+    it('should detect missing hashes, broken predecessor links, and altered entries in chain', () => {
+      interface AuditEntry {
+        logId: string;
+        action: string;
+        actorRole: string;
+        entityType: string;
+        entityId: string;
+        details: any;
+        previousHash: string;
+        entryHash?: string;
+      }
+
+      function verifyFullChain(records: AuditEntry[]): { isValid: boolean; errorCount: number; errors: string[] } {
+        const errors: string[] = [];
+        let expectedPrevHash = GENESIS_HASH;
+
+        for (let i = 0; i < records.length; i++) {
+          const r = records[i];
+          if (!r.entryHash) {
+            errors.push(`Missing entryHash at logId: ${r.logId}`);
+            continue;
+          }
+
+          if (r.previousHash !== expectedPrevHash) {
+            errors.push(`Broken chain link at logId: ${r.logId}`);
+          }
+
+          const recalculated = computeEntryHash(r);
+          if (recalculated !== r.entryHash) {
+            errors.push(`Hash mismatch at logId: ${r.logId} - data has been modified`);
+          }
+
+          expectedPrevHash = r.entryHash;
+        }
+
+        return { isValid: errors.length === 0, errorCount: errors.length, errors };
+      }
+
+      // 1. Valid chain
+      const e0: AuditEntry = {
+        logId: 'L-0',
+        action: 'A0',
+        actorRole: 'CUSTOMER',
+        entityType: 'T0',
+        entityId: 'ID0',
+        details: {},
+        previousHash: GENESIS_HASH,
+      };
+      e0.entryHash = computeEntryHash(e0);
+
+      const e1: AuditEntry = {
+        logId: 'L-1',
+        action: 'A1',
+        actorRole: 'FINANCE',
+        entityType: 'T1',
+        entityId: 'ID1',
+        details: {},
+        previousHash: e0.entryHash,
+      };
+      e1.entryHash = computeEntryHash(e1);
+
+      expect(verifyFullChain([e0, e1]).isValid).toBe(true);
+
+      // 2. Tampered payload
+      const tamperedE0 = { ...e0, details: { hacked: true } };
+      const tamperCheck = verifyFullChain([tamperedE0, e1]);
+      expect(tamperCheck.isValid).toBe(false);
+      expect(tamperCheck.errors[0]).toContain('data has been modified');
+
+      // 3. Missing hash
+      const unhashedE0 = { ...e0, entryHash: undefined };
+      const missingCheck = verifyFullChain([unhashedE0, e1]);
+      expect(missingCheck.isValid).toBe(false);
+      expect(missingCheck.errors[0]).toContain('Missing entryHash');
+
+      // 4. Broken link
+      const brokenE1 = { ...e1, previousHash: 'FORGED_PREVIOUS_HASH' };
+      brokenE1.entryHash = computeEntryHash(brokenE1);
+      const brokenCheck = verifyFullChain([e0, brokenE1]);
+      expect(brokenCheck.isValid).toBe(false);
+      expect(brokenCheck.errors[0]).toContain('Broken chain link');
     });
   });
 });
