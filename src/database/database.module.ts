@@ -17,6 +17,8 @@ import { SupportMessage, SupportMessageSchema } from './schemas/support-message.
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
 import { PlatformSetting, PlatformSettingSchema } from './schemas/platform-setting.schema';
 
+import * as mongoose from 'mongoose';
+
 const logger = new Logger('DatabaseModule');
 
 let mongodInstance: MongoMemoryServer | null = null;
@@ -28,19 +30,35 @@ let mongodInstance: MongoMemoryServer | null = null;
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => {
-        const uri = configService.get<string>('MONGODB_URI');
-        if (uri && uri.trim() !== '') {
-          logger.log(`Connecting to configured MongoDB instance...`);
-          return { uri };
+        const configuredUri = configService.get<string>('MONGODB_URI');
+        let shouldUseConfigured = false;
+
+        if (configuredUri && configuredUri.trim() !== '') {
+          try {
+            logger.log(`Verifying MongoDB reachability at: ${configuredUri}...`);
+            const testConn = await mongoose.createConnection(configuredUri, {
+              serverSelectionTimeoutMS: 1500,
+            }).asPromise();
+            await testConn.close();
+            shouldUseConfigured = true;
+          } catch {
+            logger.warn(
+              `External MongoDB at "${configuredUri}" unreachable. Gracefully falling back to embedded MongoMemoryServer...`,
+            );
+          }
         }
 
-        // Automated fallback to MongoMemoryServer for reliable offline/standalone execution
-        logger.warn(`No MONGODB_URI detected. Initializing embedded high-performance MongoDB instance...`);
+        if (shouldUseConfigured && configuredUri) {
+          logger.log(`Connecting to external MongoDB instance...`);
+          return { uri: configuredUri };
+        }
+
+        logger.log(`Initializing embedded high-performance MongoDB instance...`);
         if (!mongodInstance) {
           mongodInstance = await MongoMemoryServer.create();
         }
         const memoryUri = mongodInstance.getUri();
-        logger.log(`Embedded MongoDB initialized at: ${memoryUri}`);
+        logger.log(`Embedded MongoDB active at: ${memoryUri}`);
         return {
           uri: memoryUri,
         };
