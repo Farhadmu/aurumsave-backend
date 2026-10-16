@@ -42,6 +42,39 @@ export class AuthController {
     };
   }
 
+  @Post('seed-demo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Provision or repair default evaluation accounts for the 6 demo platform roles' })
+  async seedDemo() {
+    await this.authService.ensureSeedUsers();
+    return {
+      success: true,
+      message: 'Demo evaluation accounts ensured successfully for all 6 platform roles',
+      accounts: AuthService.DEMO_USERS.map((u) => ({
+        role: u.role,
+        email: u.email,
+        password: u.password,
+        fullName: u.fullName,
+      })),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('demo-accounts')
+  @ApiOperation({ summary: 'Get list of active demo evaluation accounts for platform testing' })
+  getDemoAccounts() {
+    return {
+      success: true,
+      accounts: AuthService.DEMO_USERS.map((u) => ({
+        role: u.role,
+        email: u.email,
+        password: u.password,
+        fullName: u.fullName,
+      })),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
