@@ -12,16 +12,51 @@ async function bootstrap() {
   app.use(helmet());
 
   // CORS Configuration
+  const configuredFrontend = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL || '',
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      const isAllowed =
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:') ||
+        origin.endsWith('.vercel.app') ||
+        (configuredFrontend && origin === configuredFrontend);
+
+      if (isAllowed || process.env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Idempotency-Key'],
+  });
+
+  // URL rewrite middleware: seamlessly support requests calling /auth/..., /gold/..., etc. directly without /api/v1
+  app.use((req: any, _res: any, next: any) => {
+    if (!req.url.startsWith('/api/v1') && !req.url.startsWith('/api/v1/docs')) {
+      const topLevelRoutes = [
+        'auth',
+        'gold',
+        'orders',
+        'payments',
+        'portfolio',
+        'kyc',
+        'compliance',
+        'support',
+        'admin',
+        'operations',
+        'audit',
+        'ai',
+        'health',
+      ];
+      const firstSegment = req.url.split('?')[0].split('/').filter(Boolean)[0];
+      if (firstSegment && topLevelRoutes.includes(firstSegment)) {
+        req.url = `/api/v1${req.url.startsWith('/') ? req.url : `/${req.url}`}`;
+      }
+    }
+    next();
   });
 
   // Global Prefix
