@@ -262,6 +262,8 @@ export interface UserSummary {
   role: Role;
   kycStatus: KycStatus;
   isActive: boolean;
+  isAccountFrozen?: boolean;
+  frozenAt?: string;
   createdAt: string;
 }
 
