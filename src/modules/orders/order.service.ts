@@ -8,8 +8,9 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { OrderStatus, OrderType, Role, AuditAction } from '@aurumsave/shared';
+import { OrderStatus, OrderType, Role, AuditAction, KycStatus } from '@aurumsave/shared';
 import { Order, OrderDocument } from '../../database/schemas/order.schema';
+import { User, UserDocument } from '../../database/schemas/user.schema';
 import { QuoteService } from '../quotes/quote.service';
 import { AuditService } from '../audit/audit.service';
 import { LedgerService } from '../ledger/ledger.service';
@@ -19,12 +20,22 @@ import { CreateOrderDto, FilterOrdersDto } from './order.dto';
 export class OrderService {
   constructor(
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly quoteService: QuoteService,
     private readonly auditService: AuditService,
     private readonly ledgerService: LedgerService,
   ) {}
 
   async createOrder(userId: string, dto: CreateOrderDto): Promise<OrderDocument> {
+    // Check user account status
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User account not found');
+    }
+    if (!user.isActive) {
+      throw new ForbiddenException('Account is suspended or inactive');
+    }
+
     // Check idempotency if key provided
     if (dto.idempotencyKey) {
       const existing = await this.orderModel.findOne({ idempotencyKey: dto.idempotencyKey });
@@ -35,6 +46,13 @@ export class OrderService {
 
     // Validate quote validity and ownership
     const quote = await this.quoteService.getValidQuote(dto.quoteId, userId);
+
+    // Strict KYC verification check for sell orders
+    if (quote.orderType === OrderType.SELL && user.kycStatus !== KycStatus.APPROVED) {
+      throw new BadRequestException(
+        'Government KYC identity verification must be approved before selling gold or requesting payouts',
+      );
+    }
 
     const orderId = `ORD-${Date.now()}-${uuidv4().substring(0, 6).toUpperCase()}`;
 
@@ -55,6 +73,7 @@ export class OrderService {
           ? OrderStatus.PROCESSING
           : OrderStatus.AWAITING_PAYMENT,
       paymentMethod: dto.paymentMethod,
+      payoutDetails: dto.payoutDetails,
       idempotencyKey: dto.idempotencyKey,
       statusHistory: [
         {

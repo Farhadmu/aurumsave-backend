@@ -40,6 +40,21 @@ export class Order {
   idempotencyKey?: string;
 
   @Prop({
+    type: {
+      accountType: { type: String, enum: ['BKASH', 'NAGAD', 'BANK'] },
+      accountNumber: String,
+      bankName: String,
+      routingNumber: String,
+    },
+  })
+  payoutDetails?: {
+    accountType: string;
+    accountNumber: string;
+    bankName?: string;
+    routingNumber?: string;
+  };
+
+  @Prop({
     type: [
       {
         status: { type: String, enum: OrderStatus, required: true },

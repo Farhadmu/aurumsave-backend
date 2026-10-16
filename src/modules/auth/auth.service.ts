@@ -176,6 +176,158 @@ export class AuthService {
     return { message: 'Password updated successfully' };
   }
 
+  async getProfileWithDetails(userId: string) {
+    const user = await this.userModel.findById(userId).lean();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const profile = await this.profileModel.findOne({ userId: user._id }).lean();
+
+    return {
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        role: user.role,
+        kycStatus: user.kycStatus,
+        isActive: user.isActive,
+        isEmailVerified: user.isEmailVerified,
+      },
+      profile: profile || null,
+    };
+  }
+
+  async updateProfile(userId: string, dto: any) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (dto.fullName) user.fullName = dto.fullName;
+    if (dto.phone) user.phone = dto.phone;
+    await user.save();
+
+    let profile = await this.profileModel.findOne({ userId: user._id });
+    if (!profile) {
+      profile = await this.profileModel.create({ userId: user._id });
+    }
+
+    if (dto.occupation) profile.occupation = dto.occupation;
+    if (dto.address) profile.address = { ...profile.address, ...dto.address };
+    if (dto.nominee) profile.nominee = { ...profile.nominee, ...dto.nominee };
+    if (dto.preferredBkashNumber) profile.preferredBkashNumber = dto.preferredBkashNumber;
+    if (dto.bankDetails) profile.bankDetails = { ...profile.bankDetails, ...dto.bankDetails };
+    await profile.save();
+
+    await this.auditService.log({
+      actorId: user._id,
+      actorRole: user.role,
+      action: AuditAction.PROFILE_UPDATED,
+      entityType: 'User',
+      entityId: user._id.toString(),
+      details: { updatedFields: Object.keys(dto) },
+    });
+
+    return {
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        role: user.role,
+        kycStatus: user.kycStatus,
+      },
+      profile,
+    };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userModel.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Don't disclose whether email exists
+      return {
+        success: true,
+        message: 'If an account with that email exists, password reset instructions have been generated.',
+      };
+    }
+
+    const resetToken = require('crypto').randomBytes(32).toString('hex');
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await user.save();
+
+    await this.auditService.log({
+      actorId: user._id,
+      actorRole: user.role,
+      action: AuditAction.SYSTEM_ALERT,
+      entityType: 'User',
+      entityId: user._id.toString(),
+      details: { event: 'PASSWORD_RESET_REQUESTED', email: user.email },
+    });
+
+    return {
+      success: true,
+      message: 'Password reset token generated. Verification email delivery requires an active SMTP provider integration.',
+      resetToken: process.env.NODE_ENV !== 'production' ? resetToken : undefined,
+    };
+  }
+
+  async resetPassword(token: string, newPass: string) {
+    const user = await this.userModel
+      .findOne({
+        passwordResetToken: token,
+        passwordResetExpires: { $gt: new Date() },
+      })
+      .select('+passwordHash +passwordResetToken +passwordResetExpires');
+
+    if (!user) {
+      throw new BadRequestException('Password reset token is invalid or has expired');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPass, salt);
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    await this.auditService.log({
+      actorId: user._id,
+      actorRole: user.role,
+      action: AuditAction.PASSWORD_CHANGED,
+      entityType: 'User',
+      entityId: user._id.toString(),
+      details: { method: 'TOKEN_RESET' },
+    });
+
+    return { message: 'Password has been reset successfully. You may now log in.' };
+  }
+
+  async verifyEmail(userId: string, token?: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    await user.save();
+
+    return { message: 'Email address verified successfully' };
+  }
+
+  async logout(userId: string, role: Role) {
+    await this.auditService.log({
+      actorId: userId,
+      actorRole: role,
+      action: AuditAction.USER_LOGGED_OUT,
+      entityType: 'User',
+      entityId: userId,
+    });
+    return { success: true, message: 'Logged out successfully' };
+  }
+
   private generateToken(user: UserDocument): string {
     const payload = {
       sub: user._id.toString(),

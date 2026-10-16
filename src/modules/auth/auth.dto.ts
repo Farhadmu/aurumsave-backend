@@ -50,3 +50,78 @@ export class ChangePasswordDto {
   @MinLength(8)
   newPassword: string;
 }
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  occupation?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  address?: {
+    addressLine1?: string;
+    city?: string;
+    district?: string;
+    division?: string;
+    postalCode?: string;
+  };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  nominee?: {
+    name: string;
+    relationship: string;
+    phone: string;
+  };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  preferredBkashNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  bankDetails?: {
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    branchName: string;
+    routingNumber: string;
+  };
+}
+
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'customer@aurumsave.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}
+
+export class VerifyEmailDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}

@@ -54,6 +54,33 @@ export class AuthController {
     };
   }
 
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get full profile details including address, nominee, and banking' })
+  async getFullProfile(@CurrentUser('id') userId: string) {
+    const result = await this.authService.getProfileWithDetails(userId);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update customer personal profile, address, and payout details' })
+  async updateProfile(@CurrentUser('id') userId: string, @Body() dto: any) {
+    const result = await this.authService.updateProfile(userId, dto);
+    return {
+      success: true,
+      message: 'Profile updated successfully',
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -63,6 +90,52 @@ export class AuthController {
     return {
       success: true,
       message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request password reset token for account recovery' })
+  async forgotPassword(@Body('email') email: string) {
+    const result = await this.authService.forgotPassword(email);
+    return {
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset account password using verified token' })
+  async resetPassword(@Body('token') token: string, @Body('newPassword') newPass: string) {
+    const result = await this.authService.resetPassword(token, newPass);
+    return {
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('verify-email')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify account email address' })
+  async verifyEmail(@CurrentUser('id') userId: string, @Body('token') token?: string) {
+    const result = await this.authService.verifyEmail(userId, token);
+    return {
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Explicitly logout and terminate current authenticated session' })
+  async logout(@CurrentUser('id') userId: string, @CurrentUser('role') role: any) {
+    const result = await this.authService.logout(userId, role);
+    return {
+      ...result,
       timestamp: new Date().toISOString(),
     };
   }
