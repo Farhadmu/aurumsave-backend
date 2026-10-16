@@ -159,7 +159,13 @@ export class OrderService {
       this.orderModel.countDocuments(query),
     ]);
 
-    return { orders, total, limit, skip };
+    const formattedOrders = orders.map((o: any) => ({
+      ...o,
+      weightGrams: o.weightMilligrams ? o.weightMilligrams / 1000 : 0,
+      totalBdt: o.totalPoisha ? o.totalPoisha / 100 : 0,
+    }));
+
+    return { orders: formattedOrders, total, limit, skip };
   }
 
   async getAllOrders(filter: FilterOrdersDto) {
@@ -180,7 +186,13 @@ export class OrderService {
       this.orderModel.countDocuments(query),
     ]);
 
-    return { orders, total, limit, skip };
+    const formattedOrders = orders.map((o: any) => ({
+      ...o,
+      weightGrams: o.weightMilligrams ? o.weightMilligrams / 1000 : 0,
+      totalBdt: o.totalPoisha ? o.totalPoisha / 100 : 0,
+    }));
+
+    return { orders: formattedOrders, total, limit, skip };
   }
 
   async settleSellOrderPayout(
