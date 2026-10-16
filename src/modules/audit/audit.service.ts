@@ -56,22 +56,24 @@ export class AuditService {
   }
 
   async verifyChainIntegrity(limit: number = 100) {
-    const logs = await this.auditModel.find().sort({ createdAt: 1 }).limit(limit).lean();
+    const logs = await this.auditModel
+      .find({ entryHash: { $exists: true, $ne: null } })
+      .sort({ createdAt: 1 })
+      .limit(limit)
+      .lean();
     let isChainValid = true;
     let verifiedCount = 0;
     let brokenAt: string | null = null;
 
     for (let i = 0; i < logs.length; i++) {
       const current = logs[i];
-      if (current.entryHash) {
-        verifiedCount++;
-        if (i > 0) {
-          const prevEntry = logs[i - 1];
-          if (current.previousHash !== prevEntry.entryHash) {
-            isChainValid = false;
-            brokenAt = current.logId;
-            break;
-          }
+      verifiedCount++;
+      if (i > 0) {
+        const prevEntry = logs[i - 1];
+        if (current.previousHash !== prevEntry.entryHash) {
+          isChainValid = false;
+          brokenAt = current.logId;
+          break;
         }
       }
     }
