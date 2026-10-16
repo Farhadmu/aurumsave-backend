@@ -1,8 +1,11 @@
 import { Controller, Post, Get, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Role } from '@aurumsave/shared';
 import { PaymentService } from './payment.service';
 import { InitiatePaymentDto, ProcessWebhookDto } from './payment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Payments')
@@ -41,7 +44,8 @@ export class PaymentController {
   }
 
   @Post(':id/refund')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Execute authorized refund for payment (Finance & Admin only)' })
   async refundPayment(
