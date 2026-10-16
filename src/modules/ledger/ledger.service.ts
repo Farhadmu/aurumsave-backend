@@ -150,6 +150,69 @@ export class LedgerService {
     return { entry, holding };
   }
 
+  /**
+   * Reverses a gold purchase upon authorized refund, debiting gold holding and recording reversal entry
+   */
+  async reverseGoldPurchase(params: {
+    userId: string;
+    orderId: string;
+    paymentId: string;
+    purity: PurityGrade;
+    weightMilligrams: number;
+    refundPoisha: number;
+    description: string;
+  }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
+    const userObjectId = new Types.ObjectId(params.userId);
+
+    const holding = await this.holdingModel.findOne({
+      userId: userObjectId,
+      purity: params.purity,
+    });
+
+    if (!holding || holding.weightMilligramsAvailable < params.weightMilligrams) {
+      throw new BadRequestException('Cannot reverse gold purchase: gold has already been withdrawn or sold');
+    }
+
+    const newWeightMg = holding.weightMilligramsAvailable - params.weightMilligrams;
+    const newTotalCostPoisha = Math.max(0, holding.totalCostPoisha - params.refundPoisha);
+    const newAvgCostPerMg = newWeightMg > 0 ? Math.round(newTotalCostPoisha / newWeightMg) : 0;
+
+    holding.weightMilligramsAvailable = newWeightMg;
+    holding.totalCostPoisha = newTotalCostPoisha;
+    holding.averageCostPerMilligramPoisha = newAvgCostPerMg;
+    await holding.save();
+
+    const lastEntry = await this.ledgerModel
+      .findOne({ userId: userObjectId })
+      .sort({ createdAt: -1 });
+
+    const prevGoldMg = lastEntry ? lastEntry.runningGoldBalanceMg : 0;
+    const prevFiatPoisha = lastEntry ? lastEntry.runningFiatBalancePoisha : 0;
+
+    const entryId = `LED-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+    const entry = await this.ledgerModel.create({
+      entryId,
+      userId: userObjectId,
+      orderId: params.orderId,
+      paymentId: params.paymentId,
+      type: LedgerEntryType.REVERSAL,
+      debitPoisha: 0,
+      creditPoisha: params.refundPoisha,
+      debitGoldMg: params.weightMilligrams,
+      creditGoldMg: 0,
+      runningGoldBalanceMg: Math.max(0, prevGoldMg - params.weightMilligrams),
+      runningFiatBalancePoisha: prevFiatPoisha,
+      description: params.description,
+    });
+
+    this.logger.log(
+      `[LEDGER REVERSAL] User: ${params.userId} -${params.weightMilligrams}mg (${params.purity}) refunded: ${params.refundPoisha} poisha`,
+    );
+
+    return { entry, holding };
+  }
+
   async getCustomerLedgerHistory(userId: string, limit: number = 50, skip: number = 0) {
     const userObjectId = new Types.ObjectId(userId);
     const [entries, total] = await Promise.all([

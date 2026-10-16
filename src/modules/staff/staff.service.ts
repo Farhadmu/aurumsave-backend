@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Role, OrderStatus, PaymentStatus, CONVERSIONS, AuditAction } from '@aurumsave/shared';
@@ -103,6 +103,56 @@ export class StaffService {
     });
 
     return { success: true, message: `User status set to ${isActive ? 'Active' : 'Suspended'}` };
+  }
+
+  async updateUserRole(
+    targetUserId: string,
+    newRole: Role,
+    actorId: string,
+    actorRole: Role,
+  ) {
+    if (actorRole !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Only a Super Admin has authorization to assign or alter staff roles');
+    }
+
+    const user = await this.userModel.findById(targetUserId);
+    if (!user) {
+      throw new NotFoundException('Target user not found');
+    }
+
+    if (user.role === Role.SUPER_ADMIN && newRole !== Role.SUPER_ADMIN) {
+      const superAdminCount = await this.userModel.countDocuments({ role: Role.SUPER_ADMIN, isActive: true });
+      if (superAdminCount <= 1) {
+        throw new BadRequestException('Cannot demote the last remaining active Super Admin');
+      }
+    }
+
+    const oldRole = user.role;
+    user.role = newRole;
+    await user.save();
+
+    await this.auditService.log({
+      actorId,
+      actorRole,
+      action: AuditAction.ADMIN_SETTING_UPDATED,
+      entityType: 'User',
+      entityId: user._id.toString(),
+      details: {
+        action: 'ROLE_MODIFIED',
+        previousRole: oldRole,
+        newRole,
+      },
+    });
+
+    return {
+      success: true,
+      message: `User ${user.email} role updated from ${oldRole} to ${newRole}`,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role,
+      },
+    };
   }
 
   async getReconciliationReport() {

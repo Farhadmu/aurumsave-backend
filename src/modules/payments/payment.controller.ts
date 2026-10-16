@@ -30,11 +30,30 @@ export class PaymentController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get payment status and details' })
-  async getPayment(@Param('id') paymentId: string) {
-    const result = await this.paymentService.getPaymentDetails(paymentId);
+  @ApiOperation({ summary: 'Get payment status and details (with ownership enforcement)' })
+  async getPayment(@Param('id') paymentId: string, @CurrentUser() user: any) {
+    const result = await this.paymentService.getPaymentDetails(paymentId, user);
     return {
       success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post(':id/refund')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Execute authorized refund for payment (Finance & Admin only)' })
+  async refundPayment(
+    @Param('id') paymentId: string,
+    @Body('reason') reason: string,
+    @CurrentUser('id') officerId: string,
+    @CurrentUser('role') officerRole: any,
+  ) {
+    const result = await this.paymentService.refundPayment(paymentId, officerId, officerRole, reason);
+    return {
+      success: true,
+      message: result.message,
       data: result,
       timestamp: new Date().toISOString(),
     };

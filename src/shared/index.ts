@@ -201,3 +201,5 @@ export interface ApiResponse<T = any> {
   meta?: Record<string, any>;
   timestamp: string;
 }
+
+export * from './permissions';

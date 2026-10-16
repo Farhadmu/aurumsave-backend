@@ -64,6 +64,24 @@ export class StaffController {
     };
   }
 
+  @Post('admin/users/:id/role')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Assign or modify user role (Super Admin exclusive)' })
+  async updateRole(
+    @Param('id') userId: string,
+    @Body('role') role: Role,
+    @CurrentUser('id') adminId: string,
+    @CurrentUser('role') adminRole: Role,
+  ) {
+    const result = await this.staffService.updateUserRole(userId, role, adminId, adminRole);
+    return {
+      success: true,
+      message: result.message,
+      data: result.user,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('operations/reconciliation')
   @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Automated financial reconciliation report' })
