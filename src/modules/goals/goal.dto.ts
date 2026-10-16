@@ -148,3 +148,36 @@ export class SavingsAdvisorSimulateDto {
   @IsString()
   language?: 'en' | 'bn';
 }
+
+export class CreateSavingsPlanDto {
+  @ApiProperty({ description: 'Plan title (e.g. Monthly Sovereign Gold SIP)' })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @ApiProperty({ enum: ['daily', 'weekly', 'monthly'], default: 'monthly' })
+  @IsString()
+  @IsNotEmpty()
+  frequency: string;
+
+  @ApiProperty({ description: 'Periodic contribution in BDT' })
+  @IsNumber()
+  @Min(500)
+  amountBdt: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  purity?: string;
+
+  @ApiProperty({ description: 'Payment channel mandate' })
+  @IsString()
+  @IsNotEmpty()
+  paymentMethod: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+

@@ -8,7 +8,9 @@ import {
   ContributeGoalDto,
   CalculatePlanDto,
   SavingsAdvisorSimulateDto,
+  CreateSavingsPlanDto,
 } from './goal.dto';
+import { PlanStatus } from '../../database/schemas/savings-plan.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -21,6 +23,60 @@ export class GoalController {
     private readonly goalService: GoalService,
     private readonly advisorService: SavingsAdvisorService,
   ) {}
+
+  @Get('plans')
+  @ApiOperation({ summary: 'List recurring AutoSave SIP plans for the authenticated customer' })
+  async getSavingsPlans(@CurrentUser('id') userId: string): Promise<any> {
+    const data = await this.goalService.getSavingsPlans(userId);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('plans')
+  @ApiOperation({ summary: 'Create a new recurring AutoSave SIP plan' })
+  async createSavingsPlan(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateSavingsPlanDto,
+  ): Promise<any> {
+    const data = await this.goalService.createSavingsPlan(userId, dto);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Patch('plans/:planId/status')
+  @ApiOperation({ summary: 'Pause or resume an active AutoSave plan' })
+  async toggleSavingsPlan(
+    @CurrentUser('id') userId: string,
+    @Param('planId') planId: string,
+    @Body('status') status: PlanStatus,
+  ): Promise<any> {
+    const data = await this.goalService.toggleSavingsPlan(userId, planId, status);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Delete('plans/:planId')
+  @ApiOperation({ summary: 'Cancel an AutoSave plan' })
+  async cancelSavingsPlan(
+    @CurrentUser('id') userId: string,
+    @Param('planId') planId: string,
+  ): Promise<any> {
+    const data = await this.goalService.cancelSavingsPlan(userId, planId);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Get()
   @ApiOperation({ summary: 'List all active savings goals for the authenticated customer' })

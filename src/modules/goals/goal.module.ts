@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SavingsGoal, SavingsGoalSchema } from '../../database/schemas/savings-goal.schema';
+import { SavingsPlan, SavingsPlanSchema } from '../../database/schemas/savings-plan.schema';
 import { GoalService } from './goal.service';
 import { SavingsAdvisorService } from './savings-advisor.service';
 import { GoalController } from './goal.controller';
@@ -11,6 +12,7 @@ import { AuditModule } from '../audit/audit.module';
   imports: [
     MongooseModule.forFeature([
       { name: SavingsGoal.name, schema: SavingsGoalSchema },
+      { name: SavingsPlan.name, schema: SavingsPlanSchema },
     ]),
     PriceModule,
     AuditModule,

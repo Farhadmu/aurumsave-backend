@@ -1,16 +1,19 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { SavingsGoal, SavingsGoalDocument, GoalStatus } from '../../database/schemas/savings-goal.schema';
+import { SavingsPlan, SavingsPlanDocument, PlanFrequency, PlanStatus } from '../../database/schemas/savings-plan.schema';
 import { PriceService } from '../prices/price.service';
 import { PurityGrade, AuditAction, Role } from '@aurumsave/shared';
 import { AuditService } from '../audit/audit.service';
-import { CreateGoalDto, UpdateGoalDto, ContributeGoalDto, CalculatePlanDto } from './goal.dto';
+import { CreateGoalDto, UpdateGoalDto, ContributeGoalDto, CalculatePlanDto, CreateSavingsPlanDto } from './goal.dto';
 
 @Injectable()
 export class GoalService {
   constructor(
     @InjectModel(SavingsGoal.name) private readonly goalModel: Model<SavingsGoalDocument>,
+    @InjectModel(SavingsPlan.name) private readonly planModel: Model<SavingsPlanDocument>,
     private readonly priceService: PriceService,
     private readonly auditService: AuditService,
   ) {}
@@ -216,4 +219,75 @@ export class GoalService {
       disclaimer: 'Calculated estimates based on current verified benchmark rates. Gold market benchmark rates fluctuate with international and local market dynamics.',
     };
   }
+
+  async getSavingsPlans(userId: string): Promise<any[]> {
+    return this.planModel
+      .find({ userId: new Types.ObjectId(userId) })
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
+  async createSavingsPlan(userId: string, dto: CreateSavingsPlanDto): Promise<any> {
+    const planId = `SIP-${Date.now()}-${uuidv4().substring(0, 6).toUpperCase()}`;
+    const nextDebitDate = new Date();
+    if (dto.frequency === 'daily') {
+      nextDebitDate.setDate(nextDebitDate.getDate() + 1);
+    } else if (dto.frequency === 'weekly') {
+      nextDebitDate.setDate(nextDebitDate.getDate() + 7);
+    } else {
+      nextDebitDate.setMonth(nextDebitDate.getMonth() + 1);
+    }
+
+    const plan = await this.planModel.create({
+      planId,
+      userId: new Types.ObjectId(userId),
+      title: dto.title.trim(),
+      frequency: (dto.frequency as PlanFrequency) || PlanFrequency.MONTHLY,
+      amountPoisha: Math.round(dto.amountBdt * 100),
+      purity: dto.purity ? (dto.purity as PurityGrade) : PurityGrade.K24,
+      status: PlanStatus.ACTIVE,
+      paymentMethod: dto.paymentMethod,
+      accumulatedGoldMg: 0,
+      totalContributionsCount: 0,
+      nextDebitDate,
+      hasConsentMandate: true,
+      notes: dto.notes,
+    });
+
+    await this.auditService.log({
+      actorId: userId,
+      actorRole: Role.CUSTOMER,
+      action: AuditAction.ORDER_CREATED,
+      entityType: 'SavingsPlan',
+      entityId: planId,
+      details: { title: dto.title, amountBdt: dto.amountBdt, frequency: dto.frequency },
+    });
+
+    return plan;
+  }
+
+  async toggleSavingsPlan(userId: string, planId: string, status: PlanStatus): Promise<any> {
+    const plan = await this.planModel.findOneAndUpdate(
+      { planId, userId: new Types.ObjectId(userId) },
+      { status },
+      { new: true },
+    );
+    if (!plan) {
+      throw new NotFoundException(`Savings plan ${planId} not found`);
+    }
+    return plan;
+  }
+
+  async cancelSavingsPlan(userId: string, planId: string): Promise<any> {
+    const plan = await this.planModel.findOneAndUpdate(
+      { planId, userId: new Types.ObjectId(userId) },
+      { status: PlanStatus.CANCELLED, cancelledAt: new Date() },
+      { new: true },
+    );
+    if (!plan) {
+      throw new NotFoundException(`Savings plan ${planId} not found`);
+    }
+    return plan;
+  }
 }
+
