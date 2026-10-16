@@ -68,22 +68,18 @@ export class OrderService {
       ],
     });
 
-    // If it's a SELL order, debit gold immediately and mark as processing
+    // If it's a SELL order, reserve gold into pending escrow atomically to prevent concurrent overselling
     if (quote.orderType === OrderType.SELL) {
-      await this.ledgerService.debitGoldSale({
+      await this.ledgerService.reserveGoldForSale({
         userId,
-        orderId: order.orderId,
         purity: quote.purity,
         weightMilligrams: quote.weightMilligrams,
-        payoutPoisha: quote.totalPoisha,
-        description: `Gold liquidation payout for Order #${order.orderId}`,
       });
 
-      order.status = OrderStatus.COMPLETED;
-      order.completedAt = new Date();
+      order.status = OrderStatus.PROCESSING;
       order.statusHistory.push({
-        status: OrderStatus.COMPLETED,
-        note: 'Gold liquidated from vault; funds credited to Aurum wallet balance',
+        status: OrderStatus.PROCESSING,
+        note: 'Gold reserved in vault escrow; awaiting payout disbursement verification',
         timestamp: new Date(),
       });
       await order.save();
@@ -168,6 +164,60 @@ export class OrderService {
     return { orders, total, limit, skip };
   }
 
+  async settleSellOrderPayout(
+    orderId: string,
+    officerId: string,
+    officerRole: Role,
+    payoutReference?: string,
+  ): Promise<OrderDocument> {
+    const order = await this.orderModel.findOne({ orderId });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.orderType !== OrderType.SELL) {
+      throw new BadRequestException('Only SELL orders can be settled for fiat payout');
+    }
+
+    if (order.status !== OrderStatus.PROCESSING) {
+      throw new BadRequestException(`Cannot settle sell order in status: ${order.status}`);
+    }
+
+    // Settle gold liquidation from escrowed pending balance into ledger credit
+    await this.ledgerService.settleGoldSale({
+      userId: order.userId.toString(),
+      orderId: order.orderId,
+      purity: order.purity,
+      weightMilligrams: order.weightMilligrams,
+      payoutPoisha: order.totalPoisha,
+      description: `Disbursed liquidation payout for Order #${order.orderId} (Ref: ${payoutReference || 'MFS_BANK_SETTLEMENT'})`,
+    });
+
+    order.status = OrderStatus.COMPLETED;
+    order.completedAt = new Date();
+    order.statusHistory.push({
+      status: OrderStatus.COMPLETED,
+      note: `Liquidation payout disbursed & verified by ${officerRole} (Ref: ${payoutReference || officerId})`,
+      timestamp: new Date(),
+    });
+    await order.save();
+
+    await this.auditService.log({
+      actorId: officerId,
+      actorRole: officerRole,
+      action: AuditAction.ORDER_SETTLED,
+      entityType: 'Order',
+      entityId: order.orderId,
+      details: {
+        orderType: OrderType.SELL,
+        totalPoisha: order.totalPoisha,
+        payoutRef: payoutReference,
+      },
+    });
+
+    return order;
+  }
+
   async cancelOrder(orderId: string, userId: string): Promise<OrderDocument> {
     const order = await this.orderModel.findOne({ orderId });
     if (!order) {
@@ -178,8 +228,20 @@ export class OrderService {
       throw new ForbiddenException('You can only cancel your own orders');
     }
 
-    if (order.status !== OrderStatus.AWAITING_PAYMENT) {
-      throw new BadRequestException(`Cannot cancel order in status ${order.status}`);
+    if (order.orderType === OrderType.SELL) {
+      if (order.status !== OrderStatus.PROCESSING) {
+        throw new BadRequestException(`Cannot cancel sell order in status ${order.status}`);
+      }
+      // Release reserved pending gold back to customer vault
+      await this.ledgerService.releaseReservedGold({
+        userId,
+        purity: order.purity,
+        weightMilligrams: order.weightMilligrams,
+      });
+    } else {
+      if (order.status !== OrderStatus.AWAITING_PAYMENT) {
+        throw new BadRequestException(`Cannot cancel order in status ${order.status}`);
+      }
     }
 
     order.status = OrderStatus.CANCELLED;

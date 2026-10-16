@@ -22,6 +22,11 @@ export class QuoteService {
     }
 
     const liveRate = await this.priceService.getRateForPurity(dto.purity);
+    if (liveRate.isStale) {
+      throw new BadRequestException(
+        `Gold market benchmark rates for ${dto.purity} are currently stale or unverified (expired: ${liveRate.expiresAt}). Real-money quotes are temporarily halted until rates are refreshed.`,
+      );
+    }
     const pricePerGramPoisha =
       dto.orderType === OrderType.BUY
         ? liveRate.buyPricePerGramPoisha

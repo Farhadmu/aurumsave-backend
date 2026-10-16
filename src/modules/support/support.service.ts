@@ -85,9 +85,16 @@ export class SupportService {
       throw new ForbiddenException('You do not have access to this ticket');
     }
 
-    // Filter messages: customer NEVER sees internal staff notes
+    // Filter messages: Only Support Agents and Admins can view internal staff notes.
+    // Customers, Auditors, Finance Officers, and Compliance Officers are restricted from viewing internal notes.
+    const canViewInternalNotes = [
+      Role.SUPPORT_AGENT,
+      Role.ADMIN,
+      Role.SUPER_ADMIN,
+    ].includes(user.role);
+
     const messageQuery: any = { ticketId };
-    if (isCustomer) {
+    if (!canViewInternalNotes) {
       messageQuery.isInternalNote = false;
     }
 
@@ -114,14 +121,25 @@ export class SupportService {
     }
 
     const isCustomer = user.role === Role.CUSTOMER;
+    const isAuthorizedStaff = [
+      Role.SUPPORT_AGENT,
+      Role.ADMIN,
+      Role.SUPER_ADMIN,
+    ].includes(user.role);
     const isOwner = ticket.userId.toString() === user.id;
+
+    if (!isCustomer && !isAuthorizedStaff) {
+      throw new ForbiddenException(
+        `Users with role ${user.role} (such as Auditor or Finance) are not permitted to reply to support tickets without support agent credentials`,
+      );
+    }
 
     if (isCustomer && !isOwner) {
       throw new ForbiddenException('You cannot reply to another user ticket');
     }
 
-    // Only staff can mark a note as internal
-    const isInternalNote = isCustomer ? false : Boolean(dto.isInternalNote);
+    // Only authorized support staff can create internal notes
+    const isInternalNote = isAuthorizedStaff ? Boolean(dto.isInternalNote) : false;
 
     const message = await this.messageModel.create({
       ticketId,

@@ -32,6 +32,12 @@ export class AuditLog {
 
   @Prop({ trim: true })
   userAgent?: string;
+
+  @Prop({ default: 'GENESIS_0000000000000000000000000000000000000000000000000000000000000000' })
+  previousHash?: string;
+
+  @Prop()
+  entryHash?: string;
 }
 
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);

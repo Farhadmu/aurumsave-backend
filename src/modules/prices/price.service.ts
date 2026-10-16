@@ -93,26 +93,48 @@ export class PriceService implements OnModuleInit {
   }
 
   async getPriceHistory(purity: PurityGrade = PurityGrade.K24, days: number = 30) {
-    // Generate verified time series points based on benchmark curve
-    const history = [];
-    const baseRate = this.defaultRates[purity].buyBdt;
-    const now = new Date();
-
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      // Realistic smooth price variance based on macroeconomic gold price index
-      const varianceFactor = 1 + Math.sin(i * 0.25) * 0.03 + (days - i) * 0.001;
-      const rateBdt = Math.round(baseRate * varianceFactor);
-
-      history.push({
-        date: date.toISOString().split('T')[0],
-        timestamp: date.toISOString(),
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const records = await this.priceModel
+      .find({
         purity,
-        rateBdt,
-        ratePerBhoriBdt: Math.round(rateBdt * CONVERSIONS.GRAMS_PER_BHORI),
+        effectiveAt: { $gte: since },
+      })
+      .sort({ effectiveAt: 1 })
+      .lean();
+
+    if (records.length > 0) {
+      return records.map((rec) => {
+        const rateBdt = rec.buyPricePerGramPoisha / CONVERSIONS.POISHA_PER_BDT;
+        return {
+          date: new Date(rec.effectiveAt).toISOString().split('T')[0],
+          timestamp: new Date(rec.effectiveAt).toISOString(),
+          purity: rec.purity,
+          rateBdt,
+          ratePerBhoriBdt: Number((rateBdt * CONVERSIONS.GRAMS_PER_BHORI).toFixed(2)),
+          source: rec.source,
+          isVerifiedHistory: true,
+        };
       });
     }
 
-    return history;
+    // When time-series accumulation is still initializing, return latest baseline with explicit unverified status
+    const latest = await this.priceModel.findOne({ purity }).sort({ effectiveAt: -1 }).lean();
+    if (latest) {
+      const rateBdt = latest.buyPricePerGramPoisha / CONVERSIONS.POISHA_PER_BDT;
+      return [
+        {
+          date: new Date(latest.effectiveAt).toISOString().split('T')[0],
+          timestamp: new Date(latest.effectiveAt).toISOString(),
+          purity: latest.purity,
+          rateBdt,
+          ratePerBhoriBdt: Number((rateBdt * CONVERSIONS.GRAMS_PER_BHORI).toFixed(2)),
+          source: latest.source,
+          isVerifiedHistory: false,
+          notice: 'Active benchmark snapshot; time-series history accumulates as benchmark price changes are archived.',
+        },
+      ];
+    }
+
+    return [];
   }
 }

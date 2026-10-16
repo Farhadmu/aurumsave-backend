@@ -37,13 +37,29 @@ let mongodInstance: MongoMemoryServer | null = null;
           try {
             logger.log(`Verifying MongoDB reachability at: ${configuredUri}...`);
             const testConn = await mongoose.createConnection(configuredUri, {
-              serverSelectionTimeoutMS: 1500,
+              serverSelectionTimeoutMS: 2000,
             }).asPromise();
             await testConn.close();
             shouldUseConfigured = true;
-          } catch {
+          } catch (err: any) {
+            const isProd = configService.get<string>('NODE_ENV') === 'production';
+            if (isProd) {
+              logger.error(
+                `CRITICAL: Persistent MongoDB connection failed in production mode (${configuredUri}). Failing safe: ${err.message}`,
+              );
+              throw new Error(
+                `Production startup aborted: Configured persistent MongoDB instance is unreachable. Ephemeral database fallback is strictly prohibited in production.`,
+              );
+            }
             logger.warn(
-              `External MongoDB at "${configuredUri}" unreachable. Gracefully falling back to embedded MongoMemoryServer...`,
+              `External MongoDB at "${configuredUri}" unreachable in development. Gracefully falling back to embedded MongoMemoryServer...`,
+            );
+          }
+        } else {
+          const isProd = configService.get<string>('NODE_ENV') === 'production';
+          if (isProd) {
+            throw new Error(
+              `Production startup aborted: MONGODB_URI environment variable is required in production mode.`,
             );
           }
         }
@@ -53,7 +69,7 @@ let mongodInstance: MongoMemoryServer | null = null;
           return { uri: configuredUri };
         }
 
-        logger.log(`Initializing embedded high-performance MongoDB instance...`);
+        logger.log(`Initializing embedded high-performance MongoDB instance for local development...`);
         if (!mongodInstance) {
           mongodInstance = await MongoMemoryServer.create();
         }

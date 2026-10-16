@@ -1,8 +1,8 @@
-import { Controller, Post, Get, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Headers, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role } from '@aurumsave/shared';
 import { PaymentService } from './payment.service';
-import { InitiatePaymentDto, ProcessWebhookDto } from './payment.dto';
+import { InitiatePaymentDto, ProcessWebhookDto, SimulateSandboxPaymentDto } from './payment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -63,10 +63,29 @@ export class PaymentController {
     };
   }
 
+  @Post('sandbox/simulate')
+  @ApiOperation({ summary: 'Development / Sandbox Payment Simulator (disabled in production)' })
+  async simulateSandbox(@Body() dto: SimulateSandboxPaymentDto) {
+    const result = await this.paymentService.simulateSandboxPayment(dto);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Post('webhook')
-  @ApiOperation({ summary: 'Webhook endpoint for payment gateway confirmation' })
-  async webhook(@Body() dto: ProcessWebhookDto) {
-    const result = await this.paymentService.processWebhook(dto);
+  @ApiOperation({ summary: 'Secure HMAC-SHA256 verified webhook endpoint for gateway callbacks' })
+  async webhook(
+    @Body() dto: ProcessWebhookDto,
+    @Headers('x-signature') headerSignature?: string,
+    @Headers('x-gateway-signature') xGatewaySig?: string,
+  ) {
+    const signature = dto.signature || headerSignature || xGatewaySig;
+    const result = await this.paymentService.processWebhook({
+      ...dto,
+      signature,
+    });
     return {
       success: true,
       data: result,

@@ -6,11 +6,16 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { KycStatus, Role, AuditAction } from '@aurumsave/shared';
 import { KycApplication, KycApplicationDocument } from '../../database/schemas/kyc-application.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { AuditService } from '../audit/audit.service';
 import { SubmitKycDto, ReviewKycDto } from './kyc.dto';
+
+const STORAGE_DIR = path.resolve(process.cwd(), 'storage', 'kyc');
 
 @Injectable()
 export class KycService {
@@ -18,7 +23,60 @@ export class KycService {
     @InjectModel(KycApplication.name) private readonly kycModel: Model<KycApplicationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly auditService: AuditService,
-  ) {}
+  ) {
+    if (!fs.existsSync(STORAGE_DIR)) {
+      fs.mkdirSync(STORAGE_DIR, { recursive: true });
+    }
+  }
+
+  async uploadDocument(userId: string, file: any) {
+    if (!file) {
+      throw new BadRequestException('No file provided for upload');
+    }
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Invalid file type "${file.mimetype}". Allowed types: JPG, PNG, WEBP, PDF`,
+      );
+    }
+
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      throw new BadRequestException('File size exceeds the 5MB maximum limit');
+    }
+
+    const ext = path.extname(file.originalname) || '.jpg';
+    const storageKey = `kyc_${userId}_${uuidv4().substring(0, 12)}${ext}`;
+    const filePath = path.join(STORAGE_DIR, storageKey);
+
+    await fs.promises.writeFile(filePath, file.buffer);
+
+    return {
+      storageKey,
+      fileName: file.originalname,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+    };
+  }
+
+  getDocumentPath(storageKey: string): { filePath: string; mimeType: string } {
+    const safeKey = path.basename(storageKey);
+    const filePath = path.join(STORAGE_DIR, safeKey);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Document file not found in private storage');
+    }
+
+    const ext = path.extname(safeKey).toLowerCase();
+    let mimeType = 'application/octet-stream';
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.pdf') mimeType = 'application/pdf';
+
+    return { filePath, mimeType };
+  }
 
   async submitKyc(userId: string, dto: SubmitKycDto): Promise<KycApplicationDocument> {
     const userObjectId = new Types.ObjectId(userId);
@@ -31,15 +89,37 @@ export class KycService {
       throw new BadRequestException('Your KYC is already approved and verified');
     }
 
+    const pending = await this.kycModel.findOne({
+      userId: userObjectId,
+      status: KycStatus.PENDING_REVIEW,
+    });
+    if (pending) {
+      throw new BadRequestException('You already have a KYC application pending compliance review');
+    }
+
+    if (!dto.documents || dto.documents.length === 0) {
+      throw new BadRequestException('At least one identity verification document must be attached');
+    }
+
+    const sanitizedDocs = dto.documents.map((d) => {
+      const storageKey = d.storageKey || (d.securePath ? path.basename(d.securePath) : `kyc_${userId}_${uuidv4().substring(0, 8)}.jpg`);
+      return {
+        docType: d.docType,
+        storageKey,
+        fileName: d.fileName || `${d.docType}.jpg`,
+        fileSize: d.fileSize || 1024 * 1024,
+        mimeType: d.mimeType || 'image/jpeg',
+        securePath: storageKey,
+        uploadedAt: new Date(),
+      };
+    });
+
     const application = await this.kycModel.create({
       userId: userObjectId,
       status: KycStatus.PENDING_REVIEW,
       idType: dto.idType,
       idNumber: dto.idNumber,
-      documents: dto.documents.map((d) => ({
-        ...d,
-        uploadedAt: new Date(),
-      })),
+      documents: sanitizedDocs,
     });
 
     user.kycStatus = KycStatus.PENDING_REVIEW;

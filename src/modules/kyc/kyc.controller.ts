@@ -1,5 +1,18 @@
-import { Controller, Post, Get, Param, Body, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Res,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { Role, KycStatus } from '@aurumsave/shared';
 import { KycService } from './kyc.service';
 import { SubmitKycDto, ReviewKycDto } from './kyc.dto';
@@ -14,6 +27,24 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @ApiBearerAuth()
 export class KycController {
   constructor(private readonly kycService: KycService) {}
+
+  @Post('kyc/upload')
+  @Roles(Role.CUSTOMER)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload KYC identity document securely to private storage' })
+  async uploadDocument(
+    @CurrentUser('id') userId: string,
+    @UploadedFile() file: any,
+  ) {
+    const result = await this.kycService.uploadDocument(userId, file);
+    return {
+      success: true,
+      message: 'Document uploaded securely to encrypted compliance vault',
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Post('kyc/applications')
   @Roles(Role.CUSTOMER)
@@ -54,6 +85,19 @@ export class KycController {
       meta: { total: result.total, limit: result.limit, skip: result.skip },
       timestamp: new Date().toISOString(),
     };
+  }
+
+  @Get('compliance/kyc/documents/:storageKey')
+  @Roles(Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Secure document viewing stream for authorized compliance officers' })
+  async viewDocument(
+    @Param('storageKey') storageKey: string,
+    @Res() res: Response,
+  ) {
+    const doc = this.kycService.getDocumentPath(storageKey);
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${storageKey}"`);
+    res.sendFile(doc.filePath);
   }
 
   @Post('compliance/kyc/:id/review')

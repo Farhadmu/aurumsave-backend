@@ -16,10 +16,28 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'aurumsave_fintech_production_super_secret_jwt_key_2026'),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') },
-      }),
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<string>('NODE_ENV') === 'production';
+        const secret = config.get<string>('JWT_SECRET');
+        const defaultSecret = 'aurumsave_fintech_production_super_secret_jwt_key_2026';
+
+        if (isProd) {
+          if (!secret || secret.trim() === '' || secret === defaultSecret || secret.length < 32) {
+            throw new Error(
+              'Production startup rejected: JWT_SECRET must be configured with a cryptographically strong secret of at least 32 characters in production.',
+            );
+          }
+          return {
+            secret,
+            signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '1d') },
+          };
+        }
+
+        return {
+          secret: secret || defaultSecret,
+          signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') },
+        };
+      },
     }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },

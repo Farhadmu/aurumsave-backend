@@ -12,10 +12,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     configService: ConfigService,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {
+    const isProd = configService.get<string>('NODE_ENV') === 'production';
+    const secret = configService.get<string>('JWT_SECRET');
+    const defaultSecret = 'aurumsave_fintech_production_super_secret_jwt_key_2026';
+    const finalSecret = isProd ? (secret || defaultSecret) : (secret || defaultSecret);
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET', 'aurumsave_fintech_production_super_secret_jwt_key_2026'),
+      secretOrKey: finalSecret,
     });
   }
 

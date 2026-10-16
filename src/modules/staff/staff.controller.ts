@@ -116,4 +116,16 @@ export class StaffController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Get('audit/verify')
+  @Roles(Role.AUDITOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Independently verify SHA-256 cryptographic audit chain integrity' })
+  async verifyAuditChain(@Query('limit') limit?: number) {
+    const result = await this.auditService.verifyChainIntegrity(limit || 100);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

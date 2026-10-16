@@ -89,7 +89,143 @@ export class LedgerService {
   }
 
   /**
-   * Debits gold from customer holding for sale or physical redemption
+   * Atomically reserves gold for a sell order into pending balance to prevent concurrent overselling
+   */
+  async reserveGoldForSale(params: {
+    userId: string;
+    purity: PurityGrade;
+    weightMilligrams: number;
+  }): Promise<GoldHoldingDocument> {
+    const userObjectId = new Types.ObjectId(params.userId);
+
+    const holding = await this.holdingModel.findOneAndUpdate(
+      {
+        userId: userObjectId,
+        purity: params.purity,
+        weightMilligramsAvailable: { $gte: params.weightMilligrams },
+      },
+      {
+        $inc: {
+          weightMilligramsAvailable: -params.weightMilligrams,
+          weightMilligramsPending: params.weightMilligrams,
+        },
+      },
+      { new: true },
+    );
+
+    if (!holding) {
+      throw new BadRequestException('Insufficient gold balance in your vault for this transaction');
+    }
+
+    return holding;
+  }
+
+  /**
+   * Releases reserved gold back to available if a sell order is cancelled or rejected
+   */
+  async releaseReservedGold(params: {
+    userId: string;
+    purity: PurityGrade;
+    weightMilligrams: number;
+  }): Promise<GoldHoldingDocument> {
+    const userObjectId = new Types.ObjectId(params.userId);
+
+    const holding = await this.holdingModel.findOneAndUpdate(
+      {
+        userId: userObjectId,
+        purity: params.purity,
+        weightMilligramsPending: { $gte: params.weightMilligrams },
+      },
+      {
+        $inc: {
+          weightMilligramsAvailable: params.weightMilligrams,
+          weightMilligramsPending: -params.weightMilligrams,
+        },
+      },
+      { new: true },
+    );
+
+    if (!holding) {
+      throw new BadRequestException('Failed to release reserved gold: insufficient pending balance');
+    }
+
+    return holding;
+  }
+
+  /**
+   * Finalizes an executed gold sale upon confirmed payout, clearing pending gold and recording ledger credit
+   */
+  async settleGoldSale(params: {
+    userId: string;
+    orderId: string;
+    purity: PurityGrade;
+    weightMilligrams: number;
+    payoutPoisha: number;
+    description: string;
+  }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
+    const userObjectId = new Types.ObjectId(params.userId);
+
+    const holding = await this.holdingModel.findOneAndUpdate(
+      {
+        userId: userObjectId,
+        purity: params.purity,
+        weightMilligramsPending: { $gte: params.weightMilligrams },
+      },
+      {
+        $inc: {
+          weightMilligramsPending: -params.weightMilligrams,
+        },
+      },
+      { new: true },
+    );
+
+    if (!holding) {
+      throw new BadRequestException('Cannot settle gold sale: pending balance not reserved');
+    }
+
+    if (holding.weightMilligramsAvailable === 0 && holding.weightMilligramsPending === 0) {
+      holding.totalCostPoisha = 0;
+      holding.averageCostPerMilligramPoisha = 0;
+    } else {
+      holding.totalCostPoisha = Math.max(
+        0,
+        holding.totalCostPoisha - Math.round(params.weightMilligrams * holding.averageCostPerMilligramPoisha),
+      );
+    }
+    await holding.save();
+
+    const lastEntry = await this.ledgerModel
+      .findOne({ userId: userObjectId })
+      .sort({ createdAt: -1 });
+
+    const prevGoldMg = lastEntry ? lastEntry.runningGoldBalanceMg : 0;
+    const prevFiatPoisha = lastEntry ? lastEntry.runningFiatBalancePoisha : 0;
+
+    const entryId = `LED-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+    const entry = await this.ledgerModel.create({
+      entryId,
+      userId: userObjectId,
+      orderId: params.orderId,
+      type: LedgerEntryType.GOLD_SALE,
+      debitPoisha: 0,
+      creditPoisha: params.payoutPoisha,
+      debitGoldMg: params.weightMilligrams,
+      creditGoldMg: 0,
+      runningGoldBalanceMg: Math.max(0, prevGoldMg - params.weightMilligrams),
+      runningFiatBalancePoisha: prevFiatPoisha + params.payoutPoisha,
+      description: params.description,
+    });
+
+    this.logger.log(
+      `[LEDGER DEBIT SETTLED] User: ${params.userId} -${params.weightMilligrams}mg (${params.purity}) payout: ${params.payoutPoisha} poisha`,
+    );
+
+    return { entry, holding };
+  }
+
+  /**
+   * Debits gold from customer holding for direct sale or physical redemption (atomic)
    */
   async debitGoldSale(params: {
     userId: string;
@@ -101,22 +237,32 @@ export class LedgerService {
   }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
     const userObjectId = new Types.ObjectId(params.userId);
 
-    const holding = await this.holdingModel.findOne({
-      userId: userObjectId,
-      purity: params.purity,
-    });
+    const holding = await this.holdingModel.findOneAndUpdate(
+      {
+        userId: userObjectId,
+        purity: params.purity,
+        weightMilligramsAvailable: { $gte: params.weightMilligrams },
+      },
+      {
+        $inc: {
+          weightMilligramsAvailable: -params.weightMilligrams,
+        },
+      },
+      { new: true },
+    );
 
-    if (!holding || holding.weightMilligramsAvailable < params.weightMilligrams) {
+    if (!holding) {
       throw new BadRequestException('Insufficient gold balance in your vault for this transaction');
     }
 
-    const newWeightMg = holding.weightMilligramsAvailable - params.weightMilligrams;
-    holding.weightMilligramsAvailable = newWeightMg;
-    if (newWeightMg === 0) {
+    if (holding.weightMilligramsAvailable === 0) {
       holding.totalCostPoisha = 0;
       holding.averageCostPerMilligramPoisha = 0;
     } else {
-      holding.totalCostPoisha = Math.max(0, holding.totalCostPoisha - Math.round(params.weightMilligrams * holding.averageCostPerMilligramPoisha));
+      holding.totalCostPoisha = Math.max(
+        0,
+        holding.totalCostPoisha - Math.round(params.weightMilligrams * holding.averageCostPerMilligramPoisha),
+      );
     }
     await holding.save();
 

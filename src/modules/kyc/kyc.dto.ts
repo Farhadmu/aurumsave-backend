@@ -18,27 +18,24 @@ export class SubmitKycDto {
     example: [
       {
         docType: KycDocumentType.NID_FRONT,
+        storageKey: 'kyc_user_abc123.jpg',
         fileName: 'nid_front.jpg',
-        fileSize: 1048576,
-        mimeType: 'image/jpeg',
-        securePath: '/vault/kyc/doc_front_enc.bin',
       },
       {
         docType: KycDocumentType.NID_BACK,
+        storageKey: 'kyc_user_abc456.jpg',
         fileName: 'nid_back.jpg',
-        fileSize: 1048576,
-        mimeType: 'image/jpeg',
-        securePath: '/vault/kyc/doc_back_enc.bin',
       },
     ],
   })
   @IsArray()
   documents: Array<{
     docType: KycDocumentType;
-    fileName: string;
-    fileSize: number;
-    mimeType: string;
-    securePath: string;
+    storageKey?: string;
+    securePath?: string;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
   }>;
 }
 

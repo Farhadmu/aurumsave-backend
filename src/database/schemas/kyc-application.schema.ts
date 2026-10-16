@@ -25,7 +25,8 @@ export class KycApplication {
         fileName: { type: String, required: true },
         fileSize: { type: Number, required: true },
         mimeType: { type: String, required: true },
-        securePath: { type: String, required: true }, // Not public URL
+        securePath: { type: String, required: true }, // Private path or storage key
+        storageKey: { type: String },
         uploadedAt: { type: Date, default: Date.now },
       },
     ],
@@ -37,6 +38,7 @@ export class KycApplication {
     fileSize: number;
     mimeType: string;
     securePath: string;
+    storageKey?: string;
     uploadedAt: Date;
   }>;
 

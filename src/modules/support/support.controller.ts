@@ -67,6 +67,22 @@ export class SupportController {
     };
   }
 
+  @Post('tickets/:id/reply')
+  @ApiOperation({ summary: 'Add a reply message or internal staff note to a ticket (aligned with frontend)' })
+  async reply(
+    @Param('id') ticketId: string,
+    @CurrentUser() user: any,
+    @Body() dto: AddMessageDto,
+  ) {
+    const message = await this.supportService.addMessage(ticketId, user, dto);
+    return {
+      success: true,
+      message: 'Message added successfully',
+      data: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Post('tickets/:id/messages')
   @ApiOperation({ summary: 'Add a reply message or internal staff note to a ticket' })
   async addMessage(
