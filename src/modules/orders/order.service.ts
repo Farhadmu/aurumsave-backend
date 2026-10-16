@@ -37,6 +37,9 @@ export class OrderService {
     if (!user.isActive) {
       throw new ForbiddenException('Account is suspended or inactive');
     }
+    if (user.isAccountFrozen) {
+      throw new ForbiddenException('Account is currently locked under emergency security freeze. Trading and withdrawal operations are halted.');
+    }
 
     // Check idempotency if key provided
     if (dto.idempotencyKey) {

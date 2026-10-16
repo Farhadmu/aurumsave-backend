@@ -39,6 +39,21 @@ export class User {
   @Prop({ default: false })
   isEmailVerified: boolean;
 
+  @Prop({ default: false, index: true })
+  isAccountFrozen: boolean;
+
+  @Prop()
+  frozenAt?: Date;
+
+  @Prop({ trim: true })
+  frozenReason?: string;
+
+  @Prop()
+  lastLoginIp?: string;
+
+  @Prop()
+  lastLoginUa?: string;
+
   @Prop({ select: false })
   emailVerificationToken?: string;
 

@@ -16,6 +16,7 @@ import { SupportTicket, SupportTicketSchema } from './schemas/support-ticket.sch
 import { SupportMessage, SupportMessageSchema } from './schemas/support-message.schema';
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
 import { PlatformSetting, PlatformSettingSchema } from './schemas/platform-setting.schema';
+import { SavingsGoal, SavingsGoalSchema } from './schemas/savings-goal.schema';
 
 import * as mongoose from 'mongoose';
 
@@ -87,6 +88,7 @@ let mongodInstance: MongoMemoryServer | null = null;
       { name: SupportMessage.name, schema: SupportMessageSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: PlatformSetting.name, schema: PlatformSettingSchema },
+      { name: SavingsGoal.name, schema: SavingsGoalSchema },
     ]),
   ],
   exports: [MongooseModule],

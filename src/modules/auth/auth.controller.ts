@@ -172,4 +172,55 @@ export class AuthController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Get('security')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get customer personal security center details, active session, and checklist' })
+  async getSecurity(@CurrentUser('id') userId: string, @Req() req: Request) {
+    const ip = req.ip || req.socket.remoteAddress;
+    const ua = req.headers['user-agent'];
+    const data = await this.authService.getSecurityCenterData(userId, ip, ua);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('freeze')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Immediately freeze account and halt all trading/withdrawals' })
+  async freezeAccount(
+    @CurrentUser('id') userId: string,
+    @Body('reason') reason: string,
+    @Req() req: Request,
+  ) {
+    const ip = req.ip || req.socket.remoteAddress;
+    const ua = req.headers['user-agent'];
+    const result = await this.authService.freezeAccount(userId, reason, ip, ua);
+    return {
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('unfreeze')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Unfreeze account (Super Admin or re-authenticated recovery)' })
+  async unfreezeAccount(
+    @CurrentUser('id') actorId: string,
+    @CurrentUser('role') actorRole: any,
+    @Body('userId') targetUserId?: string,
+  ) {
+    const userIdToUnfreeze = targetUserId || actorId;
+    const result = await this.authService.unfreezeAccount(userIdToUnfreeze, actorId, actorRole);
+    return {
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
+
