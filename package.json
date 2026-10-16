@@ -60,6 +60,10 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^@aurumsave/shared$": "<rootDir>/shared/index.ts",
+      "^@aurumsave/shared/(.*)$": "<rootDir>/shared/$1"
+    },
     "collectCoverageFrom": ["**/*.(t|j)s"],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"

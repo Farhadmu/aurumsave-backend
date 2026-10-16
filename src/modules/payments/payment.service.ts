@@ -90,6 +90,12 @@ export class PaymentService {
       throw new NotFoundException('Associated order not found');
     }
 
+    if (order.status !== OrderStatus.AWAITING_PAYMENT) {
+      throw new BadRequestException(
+        `Cannot process payment for order ${order.orderId} in status: ${order.status}`,
+      );
+    }
+
     if (dto.success === false) {
       payment.status = PaymentStatus.FAILED;
       payment.failureReason = 'Payment rejected by gateway or user cancelled';

@@ -40,7 +40,7 @@ export class AuthService {
       passwordHash,
       fullName: dto.fullName,
       phone: dto.phone,
-      role: dto.role || Role.CUSTOMER,
+      role: Role.CUSTOMER, // Strict server-enforced role boundary: public registration can only create customer accounts
       kycStatus: KycStatus.NOT_SUBMITTED,
       isActive: true,
       isEmailVerified: true, // Auto-verified for seamless MVP experience
