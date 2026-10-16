@@ -6,7 +6,7 @@ export type QuoteDocument = Quote & Document;
 
 @Schema({ timestamps: true })
 export class Quote {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   quoteId: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
@@ -44,5 +44,4 @@ export class Quote {
 }
 
 export const QuoteSchema = SchemaFactory.createForClass(Quote);
-QuoteSchema.index({ quoteId: 1 });
 QuoteSchema.index({ userId: 1, expiresAt: 1, isUsed: 1 });

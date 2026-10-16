@@ -6,7 +6,7 @@ export type SupportTicketDocument = SupportTicket & Document;
 
 @Schema({ timestamps: true })
 export class SupportTicket {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   ticketId: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
@@ -38,6 +38,5 @@ export class SupportTicket {
 }
 
 export const SupportTicketSchema = SchemaFactory.createForClass(SupportTicket);
-SupportTicketSchema.index({ ticketId: 1 });
 SupportTicketSchema.index({ userId: 1, createdAt: -1 });
 SupportTicketSchema.index({ status: 1, priority: -1 });

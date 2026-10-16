@@ -5,7 +5,7 @@ export type PlatformSettingDocument = PlatformSetting & Document;
 
 @Schema({ timestamps: true })
 export class PlatformSetting {
-  @Prop({ required: true, unique: true, trim: true, index: true })
+  @Prop({ required: true, unique: true, trim: true })
   key: string;
 
   @Prop({ required: true, type: Object })
@@ -19,4 +19,3 @@ export class PlatformSetting {
 }
 
 export const PlatformSettingSchema = SchemaFactory.createForClass(PlatformSetting);
-PlatformSettingSchema.index({ key: 1 });

@@ -31,52 +31,45 @@ let mongodInstance: MongoMemoryServer | null = null;
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => {
         const configuredUri = configService.get<string>('MONGODB_URI');
-        let shouldUseConfigured = false;
+        const isRender = !!process.env.RENDER;
+        const isProd = configService.get<string>('NODE_ENV') === 'production' || isRender;
 
         if (configuredUri && configuredUri.trim() !== '') {
-          try {
-            logger.log(`Verifying MongoDB reachability at: ${configuredUri}...`);
-            const testConn = await mongoose.createConnection(configuredUri, {
-              serverSelectionTimeoutMS: 2000,
-            }).asPromise();
-            await testConn.close();
-            shouldUseConfigured = true;
-          } catch (err: any) {
-            const isProd = configService.get<string>('NODE_ENV') === 'production';
-            if (isProd) {
-              logger.error(
-                `CRITICAL: Persistent MongoDB connection failed in production mode (${configuredUri}). Failing safe: ${err.message}`,
-              );
-              throw new Error(
-                `Production startup aborted: Configured persistent MongoDB instance is unreachable. Ephemeral database fallback is strictly prohibited in production.`,
-              );
-            }
-            logger.warn(
-              `External MongoDB at "${configuredUri}" unreachable in development. Gracefully falling back to embedded MongoMemoryServer...`,
-            );
-          }
-        } else {
-          const isProd = configService.get<string>('NODE_ENV') === 'production';
-          if (isProd) {
-            throw new Error(
-              `Production startup aborted: MONGODB_URI environment variable is required in production mode.`,
-            );
-          }
+          // Normalize and mask URI for safe logging
+          const maskedUri = configuredUri.replace(/:([^:@]+)@/, ':****@');
+          logger.log(`Configuring persistent MongoDB connection to: ${maskedUri}`);
+
+          return {
+            uri: configuredUri,
+            dbName: 'aurumsave',
+            serverSelectionTimeoutMS: 30000,
+            connectTimeoutMS: 30000,
+            socketTimeoutMS: 45000,
+            retryWrites: true,
+            w: 'majority' as const,
+          };
         }
 
-        if (shouldUseConfigured && configuredUri) {
-          logger.log(`Connecting to external MongoDB instance...`);
-          return { uri: configuredUri };
+        if (isProd) {
+          throw new Error(
+            'Production startup aborted: MONGODB_URI environment variable is required in production or Render environments.',
+          );
         }
 
-        logger.log(`Initializing embedded high-performance MongoDB instance for local development...`);
+        // Local development offline fallback
+        logger.log('No MONGODB_URI supplied. Initializing embedded MongoDB instance for local development...');
         if (!mongodInstance) {
-          mongodInstance = await MongoMemoryServer.create();
+          mongodInstance = await MongoMemoryServer.create({
+            binary: {
+              version: '7.0.14',
+            },
+          });
         }
         const memoryUri = mongodInstance.getUri();
         logger.log(`Embedded MongoDB active at: ${memoryUri}`);
         return {
           uri: memoryUri,
+          dbName: 'aurumsave',
         };
       },
     }),

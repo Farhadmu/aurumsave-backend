@@ -6,7 +6,7 @@ export type PaymentDocument = Payment & Document;
 
 @Schema({ timestamps: true })
 export class Payment {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   paymentId: string;
 
   @Prop({ required: true, index: true })
@@ -24,7 +24,7 @@ export class Payment {
   @Prop({ required: true, enum: PaymentStatus, default: PaymentStatus.INITIATED, index: true })
   status: PaymentStatus;
 
-  @Prop({ index: true })
+  @Prop()
   gatewayTransactionId?: string;
 
   @Prop({ select: false })
@@ -41,6 +41,4 @@ export class Payment {
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
-PaymentSchema.index({ paymentId: 1 }, { unique: true });
-PaymentSchema.index({ orderId: 1 });
 PaymentSchema.index({ gatewayTransactionId: 1 }, { unique: true, sparse: true });

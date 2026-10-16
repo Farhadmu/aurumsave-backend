@@ -6,7 +6,7 @@ export type LedgerEntryDocument = LedgerEntry & Document;
 
 @Schema({ timestamps: true })
 export class LedgerEntry {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   entryId: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
@@ -50,8 +50,6 @@ export class LedgerEntry {
 }
 
 export const LedgerEntrySchema = SchemaFactory.createForClass(LedgerEntry);
-LedgerEntrySchema.index({ entryId: 1 }, { unique: true });
 LedgerEntrySchema.index({ userId: 1, createdAt: -1 });
-LedgerEntrySchema.index({ orderId: 1 });
 LedgerEntrySchema.index({ paymentId: 1, type: 1 }, { unique: true, sparse: true });
 LedgerEntrySchema.index({ orderId: 1, type: 1 }, { unique: true, sparse: true });

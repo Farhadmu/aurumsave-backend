@@ -5,7 +5,7 @@ export type CustomerProfileDocument = CustomerProfile & Document;
 
 @Schema({ timestamps: true })
 export class CustomerProfile {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true })
   userId: Types.ObjectId;
 
   @Prop({ trim: true })
@@ -70,4 +70,3 @@ export class CustomerProfile {
 }
 
 export const CustomerProfileSchema = SchemaFactory.createForClass(CustomerProfile);
-CustomerProfileSchema.index({ userId: 1 });

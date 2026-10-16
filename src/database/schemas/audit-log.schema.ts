@@ -6,7 +6,7 @@ export type AuditLogDocument = AuditLog & Document;
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } }) // Immutable: no updatedAt
 export class AuditLog {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   logId: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', index: true })
@@ -41,7 +41,6 @@ export class AuditLog {
 }
 
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
-AuditLogSchema.index({ logId: 1 });
 AuditLogSchema.index({ createdAt: -1 });
 AuditLogSchema.index({ actorId: 1, createdAt: -1 });
 AuditLogSchema.index({ action: 1, createdAt: -1 });

@@ -6,7 +6,7 @@ export type OrderDocument = Order & Document;
 
 @Schema({ timestamps: true })
 export class Order {
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   orderId: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
@@ -78,6 +78,5 @@ export class Order {
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
-OrderSchema.index({ orderId: 1 });
 OrderSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ status: 1, createdAt: -1 });
