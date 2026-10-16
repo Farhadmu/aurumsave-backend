@@ -181,3 +181,67 @@ export class CreateSavingsPlanDto {
   notes?: string;
 }
 
+export class CreateFamilyGoalDto {
+  @ApiProperty({ description: 'Family vault title (e.g. Family Wedding Gold, Collective Hajj Fund)' })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @ApiProperty({ enum: GoalCategory, default: GoalCategory.FAMILY })
+  @IsEnum(GoalCategory)
+  category: GoalCategory;
+
+  @ApiPropertyOptional({ description: 'Target gold weight in milligrams' })
+  @IsOptional()
+  @IsNumber()
+  @Min(500)
+  targetWeightMg?: number;
+
+  @ApiPropertyOptional({ description: 'Target monetary amount in BDT' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1000)
+  targetAmountBdt?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  targetDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class InviteFamilyMemberDto {
+  @ApiProperty({ description: 'Phone number or email of family member to invite' })
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+
+  @ApiPropertyOptional({ enum: ['ADMIN', 'CONTRIBUTOR'], default: 'CONTRIBUTOR' })
+  @IsOptional()
+  @IsString()
+  role?: 'ADMIN' | 'CONTRIBUTOR';
+}
+
+export class ContributeFamilyGoalDto {
+  @ApiPropertyOptional({ description: 'Weight in milligrams to contribute from your gold holdings' })
+  @IsOptional()
+  @IsNumber()
+  @Min(100)
+  weightMg?: number;
+
+  @ApiPropertyOptional({ description: 'Amount in BDT to contribute directly' })
+  @IsOptional()
+  @IsNumber()
+  @Min(500)
+  amountBdt?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+

@@ -4,6 +4,7 @@ import { SupportTicket, SupportTicketSchema } from '../../database/schemas/suppo
 import { SupportMessage, SupportMessageSchema } from '../../database/schemas/support-message.schema';
 import { SupportService } from './support.service';
 import { SupportController } from './support.controller';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { SupportController } from './support.controller';
       { name: SupportTicket.name, schema: SupportTicketSchema },
       { name: SupportMessage.name, schema: SupportMessageSchema },
     ]),
+    AuditModule,
   ],
   controllers: [SupportController],
   providers: [SupportService],

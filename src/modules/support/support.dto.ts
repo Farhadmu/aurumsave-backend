@@ -45,3 +45,28 @@ export class AddMessageDto {
   @IsEnum(TicketStatus)
   updateStatus?: TicketStatus;
 }
+
+export class EscalateDisputeDto {
+  @ApiProperty({ description: 'Reason for escalating dispute to Finance Department' })
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+
+  @ApiPropertyOptional({ description: 'Optional related order ID' })
+  @IsOptional()
+  @IsString()
+  relatedOrderId?: string;
+}
+
+export class ResolveDisputeDto {
+  @ApiProperty({ enum: ['REFUND_APPROVED', 'DISPUTE_REJECTED', 'MANUAL_SETTLED'] })
+  @IsString()
+  @IsNotEmpty()
+  action: 'REFUND_APPROVED' | 'DISPUTE_REJECTED' | 'MANUAL_SETTLED';
+
+  @ApiProperty({ description: 'Authoritative financial resolution notes' })
+  @IsString()
+  @IsNotEmpty()
+  note: string;
+}
+

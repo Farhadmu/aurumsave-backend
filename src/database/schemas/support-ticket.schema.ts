@@ -30,6 +30,27 @@ export class SupportTicket {
   @Prop({ index: true })
   relatedOrderId?: string;
 
+  @Prop({ default: false, index: true })
+  escalatedToFinance?: boolean;
+
+  @Prop()
+  escalatedAt?: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  escalatedBy?: Types.ObjectId;
+
+  @Prop({ trim: true })
+  financeResolutionNote?: string;
+
+  @Prop({ enum: ['REFUND_APPROVED', 'DISPUTE_REJECTED', 'MANUAL_SETTLED'] })
+  financeAction?: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  financeOfficerId?: Types.ObjectId;
+
+  @Prop()
+  resolvedByFinanceAt?: Date;
+
   @Prop()
   resolvedAt?: Date;
 
@@ -40,3 +61,4 @@ export class SupportTicket {
 export const SupportTicketSchema = SchemaFactory.createForClass(SupportTicket);
 SupportTicketSchema.index({ userId: 1, createdAt: -1 });
 SupportTicketSchema.index({ status: 1, priority: -1 });
+SupportTicketSchema.index({ escalatedToFinance: 1, status: 1 });

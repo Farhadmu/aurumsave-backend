@@ -1,19 +1,38 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { SavingsGoal, SavingsGoalDocument, GoalStatus } from '../../database/schemas/savings-goal.schema';
 import { SavingsPlan, SavingsPlanDocument, PlanFrequency, PlanStatus } from '../../database/schemas/savings-plan.schema';
+import { User, UserDocument } from '../../database/schemas/user.schema';
+import { GoldHolding, GoldHoldingDocument } from '../../database/schemas/gold-holding.schema';
 import { PriceService } from '../prices/price.service';
 import { PurityGrade, AuditAction, Role } from '@aurumsave/shared';
 import { AuditService } from '../audit/audit.service';
-import { CreateGoalDto, UpdateGoalDto, ContributeGoalDto, CalculatePlanDto, CreateSavingsPlanDto } from './goal.dto';
+import {
+  CreateGoalDto,
+  UpdateGoalDto,
+  ContributeGoalDto,
+  CalculatePlanDto,
+  CreateSavingsPlanDto,
+  CreateFamilyGoalDto,
+  InviteFamilyMemberDto,
+  ContributeFamilyGoalDto,
+} from './goal.dto';
 
 @Injectable()
 export class GoalService {
   constructor(
     @InjectModel(SavingsGoal.name) private readonly goalModel: Model<SavingsGoalDocument>,
     @InjectModel(SavingsPlan.name) private readonly planModel: Model<SavingsPlanDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(GoldHolding.name) private readonly holdingModel: Model<GoldHoldingDocument>,
     private readonly priceService: PriceService,
     private readonly auditService: AuditService,
   ) {}
@@ -288,6 +307,205 @@ export class GoalService {
       throw new NotFoundException(`Savings plan ${planId} not found`);
     }
     return plan;
+  }
+
+  async createFamilyGoal(userId: string, dto: CreateFamilyGoalDto): Promise<any> {
+    const creator = await this.userModel.findById(userId);
+    if (!creator) throw new NotFoundException('User not found');
+
+    const goal = await this.goalModel.create({
+      userId: new Types.ObjectId(userId),
+      title: dto.title.trim(),
+      category: dto.category,
+      targetWeightMg: dto.targetWeightMg,
+      targetAmountBdt: dto.targetAmountBdt,
+      currentWeightMg: 0,
+      currentAmountBdt: 0,
+      targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
+      frequency: 'monthly',
+      status: GoalStatus.ACTIVE,
+      isFamilyGoal: true,
+      familyMembers: [
+        {
+          userId: new Types.ObjectId(userId),
+          name: creator.fullName,
+          phone: creator.phone,
+          role: 'ADMIN',
+          joinedAt: new Date(),
+          totalContributedMg: 0,
+        },
+      ],
+      notes: dto.notes,
+      contributions: [],
+    });
+
+    await this.auditService.log({
+      actorId: userId,
+      actorRole: Role.CUSTOMER,
+      action: AuditAction.ORDER_CREATED,
+      entityType: 'FamilyGoal',
+      entityId: goal._id.toString(),
+      details: { title: dto.title, targetWeightMg: dto.targetWeightMg },
+    });
+
+    return goal;
+  }
+
+  async getFamilyGoals(userId: string): Promise<any[]> {
+    const userObjId = new Types.ObjectId(userId);
+    const goals = await this.goalModel
+      .find({
+        isFamilyGoal: true,
+        $or: [{ userId: userObjId }, { 'familyMembers.userId': userObjId }],
+        status: { $ne: GoalStatus.ARCHIVED },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return goals.map((g) => ({
+      ...g,
+      isCreator: g.userId.toString() === userId,
+      callerMembership: g.familyMembers?.find((m: any) => m.userId.toString() === userId) || {
+        role: g.userId.toString() === userId ? 'ADMIN' : 'CONTRIBUTOR',
+      },
+    }));
+  }
+
+  async inviteFamilyMember(userId: string, goalId: string, dto: InviteFamilyMemberDto): Promise<any> {
+    const goal = await this.goalModel.findById(goalId);
+    if (!goal || !goal.isFamilyGoal) {
+      throw new NotFoundException('Family savings goal not found');
+    }
+
+    const isCreator = goal.userId.toString() === userId;
+    const memberRecord = goal.familyMembers?.find((m) => m.userId.toString() === userId);
+    const isAdmin = isCreator || memberRecord?.role === 'ADMIN';
+
+    if (!isAdmin) {
+      throw new ForbiddenException('Only the Family Goal Admin can invite members');
+    }
+
+    const query = dto.identifier.trim();
+    const isEmail = query.includes('@');
+    const invitedUser = await this.userModel.findOne(
+      isEmail ? { email: query.toLowerCase() } : { phone: query },
+    );
+
+    if (!invitedUser) {
+      throw new NotFoundException('No registered AurumSave user found with this phone number or email');
+    }
+
+    const alreadyMember = goal.familyMembers?.some(
+      (m) => m.userId.toString() === invitedUser._id.toString(),
+    );
+    if (alreadyMember) {
+      throw new ConflictException('This user is already a member of this family goal');
+    }
+
+    goal.familyMembers.push({
+      userId: invitedUser._id,
+      name: invitedUser.fullName,
+      phone: invitedUser.phone,
+      role: dto.role || 'CONTRIBUTOR',
+      joinedAt: new Date(),
+      totalContributedMg: 0,
+    });
+
+    await goal.save();
+
+    await this.auditService.log({
+      actorId: userId,
+      actorRole: Role.CUSTOMER,
+      action: AuditAction.PROFILE_UPDATED,
+      entityType: 'FamilyGoal',
+      entityId: goal._id.toString(),
+      details: { invitedUserId: invitedUser._id.toString(), invitedName: invitedUser.fullName },
+    });
+
+    return {
+      success: true,
+      message: `${invitedUser.fullName} has been added to the family vault!`,
+      goal,
+    };
+  }
+
+  async contributeToFamilyGoal(userId: string, goalId: string, dto: ContributeFamilyGoalDto): Promise<any> {
+    const goal = await this.goalModel.findById(goalId);
+    if (!goal || !goal.isFamilyGoal) {
+      throw new NotFoundException('Family savings goal not found');
+    }
+
+    const isCreator = goal.userId.toString() === userId;
+    const isMember = goal.familyMembers?.some((m) => m.userId.toString() === userId);
+    if (!isCreator && !isMember) {
+      throw new ForbiddenException('You are not a member of this family goal');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    const weightMg = dto.weightMg || 0;
+    const amountBdt = dto.amountBdt || 0;
+
+    if (weightMg <= 0 && amountBdt <= 0) {
+      throw new BadRequestException('Must provide either a gold weight (mg) or BDT amount to contribute');
+    }
+
+    if (weightMg > 0) {
+      const holding = await this.holdingModel.findOneAndUpdate(
+        {
+          userId: new Types.ObjectId(userId),
+          purity: PurityGrade.K24,
+          weightMilligramsAvailable: { $gte: weightMg },
+        },
+        {
+          $inc: { weightMilligramsAvailable: -weightMg },
+        },
+        { new: true },
+      );
+
+      if (!holding) {
+        throw new BadRequestException('Insufficient available 24K gold in your vault for this contribution');
+      }
+    }
+
+    goal.currentWeightMg += weightMg;
+    goal.currentAmountBdt += amountBdt;
+
+    const member = goal.familyMembers?.find((m) => m.userId.toString() === userId);
+    if (member) {
+      member.totalContributedMg += weightMg;
+    }
+
+    goal.contributions.push({
+      contributorUserId: user._id,
+      contributorName: user.fullName,
+      weightMg,
+      amountBdt,
+      date: new Date(),
+      note: dto.note || 'Family collective savings contribution',
+    });
+
+    if (goal.targetWeightMg && goal.currentWeightMg >= goal.targetWeightMg) {
+      goal.status = GoalStatus.COMPLETED;
+    }
+
+    await goal.save();
+
+    await this.auditService.log({
+      actorId: userId,
+      actorRole: Role.CUSTOMER,
+      action: AuditAction.ORDER_SETTLED,
+      entityType: 'FamilyGoal',
+      entityId: goal._id.toString(),
+      details: { contributor: user.fullName, weightMg, amountBdt },
+    });
+
+    return {
+      success: true,
+      message: `Contributed successfully to ${goal.title}!`,
+      goal,
+    };
   }
 }
 

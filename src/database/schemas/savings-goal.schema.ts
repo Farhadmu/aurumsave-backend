@@ -20,9 +20,38 @@ export enum GoalStatus {
 }
 
 @Schema({ _id: false })
+export class FamilyMember {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId: Types.ObjectId;
+
+  @Prop({ required: true, trim: true })
+  name: string;
+
+  @Prop({ trim: true })
+  phone?: string;
+
+  @Prop({ required: true, enum: ['ADMIN', 'CONTRIBUTOR'], default: 'CONTRIBUTOR' })
+  role: 'ADMIN' | 'CONTRIBUTOR';
+
+  @Prop({ default: Date.now })
+  joinedAt: Date;
+
+  @Prop({ default: 0 })
+  totalContributedMg: number;
+}
+
+export const FamilyMemberSchema = SchemaFactory.createForClass(FamilyMember);
+
+@Schema({ _id: false })
 export class GoalContribution {
   @Prop({ type: Types.ObjectId, ref: 'Order' })
   orderId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  contributorUserId?: Types.ObjectId;
+
+  @Prop({ trim: true })
+  contributorName?: string;
 
   @Prop({ required: true })
   weightMg: number;
@@ -74,6 +103,12 @@ export class SavingsGoal {
   @Prop({ required: true, enum: GoalStatus, default: GoalStatus.ACTIVE, index: true })
   status: GoalStatus;
 
+  @Prop({ default: false, index: true })
+  isFamilyGoal?: boolean;
+
+  @Prop({ type: [FamilyMemberSchema], default: [] })
+  familyMembers?: FamilyMember[];
+
   @Prop({ trim: true })
   notes?: string;
 
@@ -83,3 +118,4 @@ export class SavingsGoal {
 
 export const SavingsGoalSchema = SchemaFactory.createForClass(SavingsGoal);
 SavingsGoalSchema.index({ userId: 1, status: 1 });
+SavingsGoalSchema.index({ 'familyMembers.userId': 1 });

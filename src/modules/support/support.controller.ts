@@ -2,7 +2,7 @@ import { Controller, Post, Get, Param, Body, Query, UseGuards } from '@nestjs/co
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role, TicketStatus } from '@aurumsave/shared';
 import { SupportService } from './support.service';
-import { CreateTicketDto, AddMessageDto } from './support.dto';
+import { CreateTicketDto, AddMessageDto, EscalateDisputeDto, ResolveDisputeDto } from './support.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -95,6 +95,50 @@ export class SupportController {
       success: true,
       message: 'Message added successfully',
       data: message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('tickets/:id/escalate')
+  @Roles(Role.SUPPORT_AGENT, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Escalate an order or payment dispute to Finance Operations' })
+  async escalateTicket(
+    @Param('id') ticketId: string,
+    @CurrentUser() user: any,
+    @Body() dto: EscalateDisputeDto,
+  ) {
+    const result = await this.supportService.escalateToFinance(ticketId, user, dto);
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('disputes')
+  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN, Role.AUDITOR)
+  @ApiOperation({ summary: 'Finance Operations: Order-linked dispute escalation queue' })
+  async getDisputes(@CurrentUser() user: any) {
+    const data = await this.supportService.getFinanceDisputes(user);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('disputes/:id/resolve')
+  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Finance Operations: Four-eyes dispute resolution decision' })
+  async resolveDispute(
+    @Param('id') ticketId: string,
+    @CurrentUser() user: any,
+    @Body() dto: ResolveDisputeDto,
+  ) {
+    const result = await this.supportService.resolveFinanceDispute(ticketId, user, dto);
+    return {
+      success: true,
+      ...result,
       timestamp: new Date().toISOString(),
     };
   }

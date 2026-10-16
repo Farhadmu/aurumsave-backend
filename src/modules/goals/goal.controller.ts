@@ -9,6 +9,9 @@ import {
   CalculatePlanDto,
   SavingsAdvisorSimulateDto,
   CreateSavingsPlanDto,
+  CreateFamilyGoalDto,
+  InviteFamilyMemberDto,
+  ContributeFamilyGoalDto,
 } from './goal.dto';
 import { PlanStatus } from '../../database/schemas/savings-plan.schema';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -23,6 +26,61 @@ export class GoalController {
     private readonly goalService: GoalService,
     private readonly advisorService: SavingsAdvisorService,
   ) {}
+
+  @Get('family')
+  @ApiOperation({ summary: 'List collaborative family savings goals and progress' })
+  async getFamilyGoals(@CurrentUser('id') userId: string): Promise<any> {
+    const data = await this.goalService.getFamilyGoals(userId);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('family')
+  @ApiOperation({ summary: 'Create a new collective family gold savings goal' })
+  async createFamilyGoal(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateFamilyGoalDto,
+  ): Promise<any> {
+    const data = await this.goalService.createFamilyGoal(userId, dto);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('family/:goalId/invite')
+  @ApiOperation({ summary: 'Invite a family member to collaborative vault' })
+  async inviteFamilyMember(
+    @CurrentUser('id') userId: string,
+    @Param('goalId') goalId: string,
+    @Body() dto: InviteFamilyMemberDto,
+  ): Promise<any> {
+    const data = await this.goalService.inviteFamilyMember(userId, goalId, dto);
+    return {
+      success: true,
+      ...data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('family/:goalId/contribute')
+  @ApiOperation({ summary: 'Contribute gold or fiat to family collective goal' })
+  async contributeFamilyGoal(
+    @CurrentUser('id') userId: string,
+    @Param('goalId') goalId: string,
+    @Body() dto: ContributeFamilyGoalDto,
+  ): Promise<any> {
+    const data = await this.goalService.contributeToFamilyGoal(userId, goalId, dto);
+    return {
+      success: true,
+      ...data,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Get('plans')
   @ApiOperation({ summary: 'List recurring AutoSave SIP plans for the authenticated customer' })
