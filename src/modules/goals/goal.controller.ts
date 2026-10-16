@@ -1,7 +1,14 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { GoalService } from './goal.service';
-import { CreateGoalDto, UpdateGoalDto, ContributeGoalDto, CalculatePlanDto } from './goal.dto';
+import { SavingsAdvisorService } from './savings-advisor.service';
+import {
+  CreateGoalDto,
+  UpdateGoalDto,
+  ContributeGoalDto,
+  CalculatePlanDto,
+  SavingsAdvisorSimulateDto,
+} from './goal.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -10,12 +17,40 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class GoalController {
-  constructor(private readonly goalService: GoalService) {}
+  constructor(
+    private readonly goalService: GoalService,
+    private readonly advisorService: SavingsAdvisorService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all active savings goals for the authenticated customer' })
   async getGoals(@CurrentUser('id') userId: string): Promise<any> {
     const data = await this.goalService.getGoals(userId);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('advisor/simulate')
+  @ApiOperation({ summary: 'AI Gold Savings Advisor: Multi-scenario deterministic projection' })
+  async simulateAdvisor(@Body() dto: SavingsAdvisorSimulateDto) {
+    const data = await this.advisorService.simulate(dto);
+    return {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id/recommendations')
+  @ApiOperation({ summary: 'AI Gold Savings Advisor: Goal-specific trajectory recommendations' })
+  async getGoalRecommendations(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    const data = await this.advisorService.getGoalRecommendations(userId, id);
     return {
       success: true,
       data,

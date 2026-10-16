@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SavingsGoal, SavingsGoalSchema } from '../../database/schemas/savings-goal.schema';
 import { GoalService } from './goal.service';
+import { SavingsAdvisorService } from './savings-advisor.service';
 import { GoalController } from './goal.controller';
 import { PriceModule } from '../prices/price.module';
 import { AuditModule } from '../audit/audit.module';
@@ -15,7 +16,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   controllers: [GoalController],
-  providers: [GoalService],
-  exports: [GoalService],
+  providers: [GoalService, SavingsAdvisorService],
+  exports: [GoalService, SavingsAdvisorService],
 })
 export class GoalModule {}

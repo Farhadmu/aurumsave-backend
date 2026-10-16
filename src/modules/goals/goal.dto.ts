@@ -118,3 +118,33 @@ export class CalculatePlanDto {
   @Min(1)
   targetMonths: number;
 }
+
+export class SavingsAdvisorSimulateDto {
+  @ApiPropertyOptional({ description: 'Target gold weight in grams (e.g. 11.664 for 1 Bhori)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  targetGrams?: number;
+
+  @ApiPropertyOptional({ description: 'Target amount in BDT' })
+  @IsOptional()
+  @IsNumber()
+  @Min(500)
+  targetAmountBdt?: number;
+
+  @ApiProperty({ description: 'Horizon in months (e.g. 6, 12, 24, 36)' })
+  @IsNumber()
+  @Min(1)
+  targetMonths: number;
+
+  @ApiPropertyOptional({ description: 'Monthly discretionary budget in BDT' })
+  @IsOptional()
+  @IsNumber()
+  @Min(500)
+  monthlyBudgetBdt?: number;
+
+  @ApiPropertyOptional({ enum: ['en', 'bn'], default: 'bn' })
+  @IsOptional()
+  @IsString()
+  language?: 'en' | 'bn';
+}
