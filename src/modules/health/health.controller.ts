@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { PriceService } from '../prices/price.service';
+import { PaymentVerificationService } from '../payments/providers/payment-verification.service';
 
 @ApiTags('System Health')
 @Controller('health')
@@ -10,6 +11,7 @@ export class HealthController {
   constructor(
     @InjectConnection() private readonly connection: Connection,
     private readonly priceService: PriceService,
+    private readonly paymentVerificationService: PaymentVerificationService,
   ) {}
 
   @Get()
@@ -25,6 +27,7 @@ export class HealthController {
       priceFeedReady = false;
     }
 
+    const providerStatuses = this.paymentVerificationService.getProvidersStatus();
     const memory = process.memoryUsage();
 
     return {
@@ -40,8 +43,8 @@ export class HealthController {
           provider: 'BAJUS_BENCHMARK',
         },
         paymentGateways: {
-          status: 'SANDBOX_ACTIVE',
-          supported: ['BKASH', 'NAGAD', 'SSLCOMMERZ'],
+          status: 'CONFIGURED_PER_PROVIDER',
+          providers: providerStatuses,
         },
       },
       system: {

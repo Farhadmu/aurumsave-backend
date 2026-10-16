@@ -6,6 +6,11 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { PaymentService } from './payment.service';
 import { PaymentController } from './payment.controller';
 
+import { BkashVerifier } from './providers/bkash.verifier';
+import { NagadVerifier } from './providers/nagad.verifier';
+import { SslCommerzVerifier } from './providers/sslcommerz.verifier';
+import { PaymentVerificationService } from './providers/payment-verification.service';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -15,7 +20,13 @@ import { PaymentController } from './payment.controller';
     LedgerModule,
   ],
   controllers: [PaymentController],
-  providers: [PaymentService],
-  exports: [PaymentService],
+  providers: [
+    PaymentService,
+    BkashVerifier,
+    NagadVerifier,
+    SslCommerzVerifier,
+    PaymentVerificationService,
+  ],
+  exports: [PaymentService, PaymentVerificationService],
 })
 export class PaymentModule {}

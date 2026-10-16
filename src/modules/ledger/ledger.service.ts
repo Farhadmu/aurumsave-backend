@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, ClientSession } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { LedgerEntryType, PurityGrade, CONVERSIONS } from '@aurumsave/shared';
 import { LedgerEntry, LedgerEntryDocument } from '../../database/schemas/ledger-entry.schema';
@@ -16,7 +16,20 @@ export class LedgerService {
   ) {}
 
   /**
-   * Commits an accredited gold purchase into customer holding and ledger
+   * Verified check whether a completed purchase ledger entry exists for a payment
+   */
+  async hasPurchaseEntry(paymentId: string, session?: ClientSession): Promise<boolean> {
+    const entry = await this.ledgerModel
+      .findOne({
+        paymentId,
+        type: LedgerEntryType.GOLD_PURCHASE,
+      })
+      .session(session || null);
+    return Boolean(entry);
+  }
+
+  /**
+   * Commits an accredited gold purchase into customer holding and ledger within an optional ClientSession transaction
    */
   async creditGoldPurchase(params: {
     userId: string;
@@ -26,34 +39,47 @@ export class LedgerService {
     weightMilligrams: number;
     costPoisha: number;
     description: string;
+    session?: ClientSession;
   }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
     const userObjectId = new Types.ObjectId(params.userId);
 
     // Find or create customer holding for this purity
-    let holding = await this.holdingModel.findOne({
-      userId: userObjectId,
-      purity: params.purity,
-    });
-
-    if (!holding) {
-      holding = await this.holdingModel.create({
+    let holding = await this.holdingModel
+      .findOne({
         userId: userObjectId,
         purity: params.purity,
-        weightMilligramsAvailable: 0,
-        weightMilligramsPending: 0,
-        totalCostPoisha: 0,
-        averageCostPerMilligramPoisha: 0,
-      });
+      })
+      .session(params.session || null);
+
+    if (!holding) {
+      const created = await this.holdingModel.create(
+        [
+          {
+            userId: userObjectId,
+            purity: params.purity,
+            weightMilligramsAvailable: 0,
+            weightMilligramsPending: 0,
+            totalCostPoisha: 0,
+            averageCostPerMilligramPoisha: 0,
+          },
+        ],
+        { session: params.session },
+      );
+      holding = created[0];
     }
 
     // Check if ledger entry already exists for this paymentId to prevent duplicate credit
-    const existingEntry = await this.ledgerModel.findOne({
-      paymentId: params.paymentId,
-      type: LedgerEntryType.GOLD_PURCHASE,
-    });
+    const existingEntry = await this.ledgerModel
+      .findOne({
+        paymentId: params.paymentId,
+        type: LedgerEntryType.GOLD_PURCHASE,
+      })
+      .session(params.session || null);
     if (existingEntry) {
       this.logger.warn(`Ledger entry for payment ${params.paymentId} already exists. Returning existing entry.`);
-      const currentHolding = await this.holdingModel.findOne({ userId: userObjectId, purity: params.purity });
+      const currentHolding = await this.holdingModel
+        .findOne({ userId: userObjectId, purity: params.purity })
+        .session(params.session || null);
       return { entry: existingEntry, holding: currentHolding! };
     }
 
@@ -65,12 +91,13 @@ export class LedgerService {
     holding.weightMilligramsAvailable = newWeightMg;
     holding.totalCostPoisha = newTotalCostPoisha;
     holding.averageCostPerMilligramPoisha = newAvgCostPerMg;
-    await holding.save();
+    await holding.save({ session: params.session });
 
     // Query previous running balance
     const lastEntry = await this.ledgerModel
       .findOne({ userId: userObjectId })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .session(params.session || null);
 
     const prevGoldMg = lastEntry ? lastEntry.runningGoldBalanceMg : 0;
     const prevFiatPoisha = lastEntry ? lastEntry.runningFiatBalancePoisha : 0;
@@ -79,33 +106,41 @@ export class LedgerService {
 
     let entry: LedgerEntryDocument;
     try {
-      entry = await this.ledgerModel.create({
-        entryId,
-        userId: userObjectId,
-        orderId: params.orderId,
-        paymentId: params.paymentId,
-        type: LedgerEntryType.GOLD_PURCHASE,
-        debitPoisha: params.costPoisha,
-        creditPoisha: 0,
-        debitGoldMg: 0,
-        creditGoldMg: params.weightMilligrams,
-        runningGoldBalanceMg: prevGoldMg + params.weightMilligrams,
-        runningFiatBalancePoisha: prevFiatPoisha, // Fiat was paid externally via MFS
-        description: params.description,
-      });
+      const created = await this.ledgerModel.create(
+        [
+          {
+            entryId,
+            userId: userObjectId,
+            orderId: params.orderId,
+            paymentId: params.paymentId,
+            type: LedgerEntryType.GOLD_PURCHASE,
+            debitPoisha: params.costPoisha,
+            creditPoisha: 0,
+            debitGoldMg: 0,
+            creditGoldMg: params.weightMilligrams,
+            runningGoldBalanceMg: prevGoldMg + params.weightMilligrams,
+            runningFiatBalancePoisha: prevFiatPoisha, // Fiat was paid externally via MFS
+            description: params.description,
+          },
+        ],
+        { session: params.session },
+      );
+      entry = created[0];
     } catch (err: any) {
-      // E11000 duplicate key rollback compensation
+      // E11000 duplicate key rollback compensation (when running outside an active session)
       if (err.code === 11000) {
         this.logger.warn(`Duplicate key on ledger entry for payment ${params.paymentId}. Compensating holding.`);
-        await this.holdingModel.updateOne(
-          { userId: userObjectId, purity: params.purity },
-          {
-            $inc: {
-              weightMilligramsAvailable: -params.weightMilligrams,
-              totalCostPoisha: -params.costPoisha,
+        if (!params.session) {
+          await this.holdingModel.updateOne(
+            { userId: userObjectId, purity: params.purity },
+            {
+              $inc: {
+                weightMilligramsAvailable: -params.weightMilligrams,
+                totalCostPoisha: -params.costPoisha,
+              },
             },
-          },
-        );
+          );
+        }
         const resolved = await this.ledgerModel.findOne({
           paymentId: params.paymentId,
           type: LedgerEntryType.GOLD_PURCHASE,
@@ -331,7 +366,7 @@ export class LedgerService {
   }
 
   /**
-   * Reverses a gold purchase upon authorized refund, debiting gold holding and recording reversal entry
+   * Reverses a gold purchase upon authorized refund, debiting gold holding and recording reversal entry within an optional ClientSession transaction
    */
   async reverseGoldPurchase(params: {
     userId: string;
@@ -341,6 +376,7 @@ export class LedgerService {
     weightMilligrams: number;
     refundPoisha: number;
     description: string;
+    session?: ClientSession;
   }): Promise<{ entry: LedgerEntryDocument; holding: GoldHoldingDocument }> {
     const userObjectId = new Types.ObjectId(params.userId);
 
@@ -356,7 +392,7 @@ export class LedgerService {
           totalCostPoisha: -params.refundPoisha,
         },
       },
-      { new: true },
+      { new: true, session: params.session },
     );
 
     if (!holding) {
@@ -373,31 +409,37 @@ export class LedgerService {
         holding.totalCostPoisha / holding.weightMilligramsAvailable,
       );
     }
-    await holding.save();
+    await holding.save({ session: params.session });
 
     const lastEntry = await this.ledgerModel
       .findOne({ userId: userObjectId })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .session(params.session || null);
 
     const prevGoldMg = lastEntry ? lastEntry.runningGoldBalanceMg : 0;
     const prevFiatPoisha = lastEntry ? lastEntry.runningFiatBalancePoisha : 0;
 
     const entryId = `LED-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
 
-    const entry = await this.ledgerModel.create({
-      entryId,
-      userId: userObjectId,
-      orderId: params.orderId,
-      paymentId: params.paymentId,
-      type: LedgerEntryType.REVERSAL,
-      debitPoisha: 0,
-      creditPoisha: params.refundPoisha,
-      debitGoldMg: params.weightMilligrams,
-      creditGoldMg: 0,
-      runningGoldBalanceMg: Math.max(0, prevGoldMg - params.weightMilligrams),
-      runningFiatBalancePoisha: prevFiatPoisha,
-      description: params.description,
-    });
+    const [entry] = await this.ledgerModel.create(
+      [
+        {
+          entryId,
+          userId: userObjectId,
+          orderId: params.orderId,
+          paymentId: params.paymentId,
+          type: LedgerEntryType.REVERSAL,
+          debitPoisha: 0,
+          creditPoisha: params.refundPoisha,
+          debitGoldMg: params.weightMilligrams,
+          creditGoldMg: 0,
+          runningGoldBalanceMg: Math.max(0, prevGoldMg - params.weightMilligrams),
+          runningFiatBalancePoisha: prevFiatPoisha,
+          description: params.description,
+        },
+      ],
+      { session: params.session },
+    );
 
     this.logger.log(
       `[LEDGER REVERSAL] User: ${params.userId} -${params.weightMilligrams}mg (${params.purity}) refunded: ${params.refundPoisha} poisha`,

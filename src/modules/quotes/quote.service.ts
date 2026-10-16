@@ -123,4 +123,42 @@ export class QuoteService {
 
     return quote;
   }
+
+  /**
+   * Atomically acquires and consumes a quote via Compare-And-Swap (CAS) to prevent concurrent replay
+   */
+  async lockAndConsumeQuote(quoteId: string, userId: string): Promise<QuoteDocument> {
+    const userObjectId = new Types.ObjectId(userId);
+    const lockedQuote = await this.quoteModel.findOneAndUpdate(
+      {
+        quoteId,
+        userId: userObjectId,
+        isUsed: false,
+        expiresAt: { $gt: new Date() },
+      },
+      {
+        $set: { isUsed: true },
+      },
+      { new: true },
+    );
+
+    if (!lockedQuote) {
+      const existing = await this.quoteModel.findOne({ quoteId });
+      if (!existing) {
+        throw new NotFoundException('Quote not found');
+      }
+      if (existing.userId.toString() !== userId) {
+        throw new BadRequestException('This quote belongs to another user');
+      }
+      if (existing.isUsed) {
+        throw new BadRequestException('This quote has already been utilized');
+      }
+      if (new Date() > new Date(existing.expiresAt)) {
+        throw new BadRequestException('Quote has expired. Please request a fresh rate.');
+      }
+      throw new BadRequestException('Could not acquire exclusive lock on quote');
+    }
+
+    return lockedQuote;
+  }
 }

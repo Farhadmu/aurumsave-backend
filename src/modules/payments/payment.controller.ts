@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Role } from '@aurumsave/shared';
 import { PaymentService } from './payment.service';
 import { InitiatePaymentDto, ProcessWebhookDto, SimulateSandboxPaymentDto } from './payment.dto';
+import { PaymentVerificationService } from './providers/payment-verification.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -11,7 +12,21 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly verificationService: PaymentVerificationService,
+  ) {}
+
+  @Get('providers/status')
+  @ApiOperation({ summary: 'Get current configuration and staging readiness status for all payment providers' })
+  getProvidersStatus() {
+    const statuses = this.verificationService.getProvidersStatus();
+    return {
+      success: true,
+      data: statuses,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Post('initiate')
   @UseGuards(JwtAuthGuard)
@@ -75,17 +90,19 @@ export class PaymentController {
   }
 
   @Post('webhook')
-  @ApiOperation({ summary: 'Secure HMAC-SHA256 verified webhook endpoint for gateway callbacks' })
+  @ApiOperation({ summary: 'Secure provider-verified webhook endpoint for gateway callbacks' })
   async webhook(
     @Body() dto: ProcessWebhookDto,
-    @Headers('x-signature') headerSignature?: string,
-    @Headers('x-gateway-signature') xGatewaySig?: string,
+    @Headers() allHeaders: Record<string, string>,
   ) {
-    const signature = dto.signature || headerSignature || xGatewaySig;
-    const result = await this.paymentService.processWebhook({
-      ...dto,
-      signature,
-    });
+    const signature = dto.signature || allHeaders['x-signature'] || allHeaders['x-gateway-signature'];
+    const result = await this.paymentService.processWebhook(
+      {
+        ...dto,
+        signature,
+      },
+      allHeaders,
+    );
     return {
       success: true,
       data: result,
@@ -93,3 +110,4 @@ export class PaymentController {
     };
   }
 }
+

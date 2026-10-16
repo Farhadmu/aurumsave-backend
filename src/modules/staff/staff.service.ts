@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Role, OrderStatus, PaymentStatus, CONVERSIONS, AuditAction } from '@aurumsave/shared';
+import { Role, OrderStatus, OrderType, PaymentStatus, LedgerEntryType, CONVERSIONS, AuditAction } from '@aurumsave/shared';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { Order, OrderDocument } from '../../database/schemas/order.schema';
 import { Payment, PaymentDocument } from '../../database/schemas/payment.schema';
@@ -158,29 +158,66 @@ export class StaffService {
   }
 
   async getReconciliationReport() {
-    const [successfulPayments, completedOrders, ledgerEntries] = await Promise.all([
-      this.paymentModel.find({ status: PaymentStatus.SUCCESSFUL }).lean(),
-      this.orderModel.find({ status: OrderStatus.COMPLETED }).lean(),
+    const [payments, orders, ledgerEntries, holdings] = await Promise.all([
+      this.paymentModel.find().lean(),
+      this.orderModel.find().lean(),
       this.ledgerModel.find().lean(),
+      this.holdingModel.find().lean(),
     ]);
+
+    const successfulPayments = payments.filter((p) => p.status === PaymentStatus.SUCCESSFUL);
+    const completedOrders = orders.filter((o) => o.status === OrderStatus.COMPLETED);
 
     let totalPaymentReceivedPoisha = 0;
     for (const p of successfulPayments) {
       totalPaymentReceivedPoisha += p.amountPoisha;
     }
 
-    let totalOrderValuePoisha = 0;
+    let totalBuyOrderValuePoisha = 0;
+    let totalSellOrderValuePoisha = 0;
     for (const o of completedOrders) {
-      totalOrderValuePoisha += o.totalPoisha;
+      if (o.orderType === OrderType.BUY) {
+        totalBuyOrderValuePoisha += o.totalPoisha;
+      } else {
+        totalSellOrderValuePoisha += o.totalPoisha;
+      }
     }
 
     let totalGoldCreditedMg = 0;
+    let totalGoldDebitedMg = 0;
     for (const l of ledgerEntries) {
       totalGoldCreditedMg += l.creditGoldMg;
+      totalGoldDebitedMg += l.debitGoldMg;
     }
 
-    const discrepancyPoisha = Math.abs(totalPaymentReceivedPoisha - totalOrderValuePoisha);
-    const isBalanced = discrepancyPoisha === 0;
+    let totalVaultAvailableMg = 0;
+    for (const h of holdings) {
+      totalVaultAvailableMg += h.weightMilligramsAvailable + h.weightMilligramsPending;
+    }
+
+    const netLedgerGoldMg = totalGoldCreditedMg - totalGoldDebitedMg;
+    const goldHoldingDiscrepancyMg = Math.abs(totalVaultAvailableMg - netLedgerGoldMg);
+
+    // Non-destructive audit for stranded or unverified financial records
+    const strandedPayments = [];
+    for (const p of successfulPayments) {
+      const ord = orders.find((o) => o.orderId === p.orderId);
+      const led = ledgerEntries.find(
+        (l) => l.paymentId === p.paymentId && l.type === LedgerEntryType.GOLD_PURCHASE,
+      );
+      if (!ord || ord.status !== OrderStatus.COMPLETED || !led) {
+        strandedPayments.push({
+          paymentId: p.paymentId,
+          orderId: p.orderId,
+          amountBdt: p.amountPoisha / CONVERSIONS.POISHA_PER_BDT,
+          orderStatus: ord ? ord.status : 'MISSING_ORDER',
+          ledgerRecorded: Boolean(led),
+        });
+      }
+    }
+
+    const fiatDiscrepancyPoisha = Math.abs(totalPaymentReceivedPoisha - totalBuyOrderValuePoisha);
+    const isBalanced = fiatDiscrepancyPoisha === 0 && goldHoldingDiscrepancyMg === 0 && strandedPayments.length === 0;
 
     return {
       runTimestamp: new Date().toISOString(),
@@ -188,10 +225,19 @@ export class StaffService {
       totalSuccessfulPaymentsCount: successfulPayments.length,
       totalCompletedOrdersCount: completedOrders.length,
       totalPaymentReceivedBdt: totalPaymentReceivedPoisha / CONVERSIONS.POISHA_PER_BDT,
-      totalOrderValueBdt: totalOrderValuePoisha / CONVERSIONS.POISHA_PER_BDT,
-      discrepancyBdt: discrepancyPoisha / CONVERSIONS.POISHA_PER_BDT,
+      totalBuyOrderValueBdt: totalBuyOrderValuePoisha / CONVERSIONS.POISHA_PER_BDT,
+      totalSellDisbursedBdt: totalSellOrderValuePoisha / CONVERSIONS.POISHA_PER_BDT,
+      discrepancyBdt: fiatDiscrepancyPoisha / CONVERSIONS.POISHA_PER_BDT,
       totalGoldCreditedGrams: totalGoldCreditedMg / CONVERSIONS.MILLIGRAMS_PER_GRAM,
+      totalGoldDebitedGrams: totalGoldDebitedMg / CONVERSIONS.MILLIGRAMS_PER_GRAM,
+      netLedgerGoldGrams: netLedgerGoldMg / CONVERSIONS.MILLIGRAMS_PER_GRAM,
+      totalVaultHoldingsGrams: totalVaultAvailableMg / CONVERSIONS.MILLIGRAMS_PER_GRAM,
+      goldDiscrepancyGrams: goldHoldingDiscrepancyMg / CONVERSIONS.MILLIGRAMS_PER_GRAM,
+      strandedInconsistentPaymentsCount: strandedPayments.length,
+      strandedPayments,
       status: isBalanced ? 'RECONCILED' : 'DISCREPANCY_DETECTED',
+      procedureNotice:
+        'Reviewed non-destructive reconciliation procedure. Flagged records require operator verification before manual reconciliation.',
     };
   }
 

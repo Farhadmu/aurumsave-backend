@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, ClientSession } from 'mongoose';
 import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { Role, AuditAction } from '@aurumsave/shared';
@@ -48,28 +48,40 @@ export class AuditService implements OnModuleInit {
     details?: Record<string, any>;
     ipAddress?: string;
     userAgent?: string;
+    session?: ClientSession;
   }): Promise<AuditLog> {
     try {
-      const last = await this.auditModel.findOne().sort({ createdAt: -1 });
+      const last = await this.auditModel
+        .findOne()
+        .sort({ createdAt: -1 })
+        .session(params.session || null);
       const previousHash = last?.entryHash || GENESIS_HASH;
       const logId = `AUD-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
 
       const payloadToHash = `${previousHash}:${logId}:${params.action}:${params.actorRole}:${params.entityType}:${params.entityId || ''}:${JSON.stringify(params.details || {})}`;
       const entryHash = crypto.createHash('sha256').update(payloadToHash).digest('hex');
 
-      const created = await this.auditModel.create({
-        logId,
-        actorId: params.actorId ? new Types.ObjectId(params.actorId.toString()) : undefined,
-        actorRole: params.actorRole,
-        action: params.action,
-        entityType: params.entityType,
-        entityId: params.entityId,
-        details: params.details || {},
-        ipAddress: params.ipAddress,
-        userAgent: params.userAgent,
-        previousHash,
-        entryHash,
-      });
+      const [created] = await this.auditModel.create(
+        [
+          {
+            logId,
+            actorId:
+              params.actorId && Types.ObjectId.isValid(params.actorId.toString())
+                ? new Types.ObjectId(params.actorId.toString())
+                : undefined,
+            actorRole: params.actorRole,
+            action: params.action,
+            entityType: params.entityType,
+            entityId: params.entityId,
+            details: params.details || {},
+            ipAddress: params.ipAddress,
+            userAgent: params.userAgent,
+            previousHash,
+            entryHash,
+          },
+        ],
+        { session: params.session },
+      );
 
       this.logger.log(`[AUDIT] ${params.action} on ${params.entityType}:${params.entityId || 'N/A'} by ${params.actorRole}`);
       return created;

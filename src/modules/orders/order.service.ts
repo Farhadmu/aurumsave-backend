@@ -46,8 +46,8 @@ export class OrderService {
       }
     }
 
-    // Validate quote validity and ownership
-    const quote = await this.quoteService.getValidQuote(dto.quoteId, userId);
+    // Validate and atomically consume quote to prevent concurrent replay race conditions
+    const quote = await this.quoteService.lockAndConsumeQuote(dto.quoteId, userId);
 
     // Defense-in-depth: Re-verify current live market rate has not expired or become stale
     const currentRate = await this.priceService.getRateForPurity(quote.purity);
@@ -65,10 +65,6 @@ export class OrderService {
     }
 
     const orderId = `ORD-${Date.now()}-${uuidv4().substring(0, 6).toUpperCase()}`;
-
-    // Mark quote as used to prevent replay
-    quote.isUsed = true;
-    await quote.save();
 
     const order = await this.orderModel.create({
       orderId,
