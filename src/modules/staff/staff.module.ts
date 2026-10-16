@@ -6,6 +6,7 @@ import { Payment, PaymentSchema } from '../../database/schemas/payment.schema';
 import { LedgerEntry, LedgerEntrySchema } from '../../database/schemas/ledger-entry.schema';
 import { GoldHolding, GoldHoldingSchema } from '../../database/schemas/gold-holding.schema';
 import { SupportTicket, SupportTicketSchema } from '../../database/schemas/support-ticket.schema';
+import { PlatformSetting, PlatformSettingSchema } from '../../database/schemas/platform-setting.schema';
 import { StaffService } from './staff.service';
 import { StaffController } from './staff.controller';
 
@@ -18,6 +19,7 @@ import { StaffController } from './staff.controller';
       { name: LedgerEntry.name, schema: LedgerEntrySchema },
       { name: GoldHolding.name, schema: GoldHoldingSchema },
       { name: SupportTicket.name, schema: SupportTicketSchema },
+      { name: PlatformSetting.name, schema: PlatformSettingSchema },
     ]),
   ],
   controllers: [StaffController],

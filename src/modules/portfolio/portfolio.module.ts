@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { User, UserSchema } from '../../database/schemas/user.schema';
 import { GoldHolding, GoldHoldingSchema } from '../../database/schemas/gold-holding.schema';
 import { PriceModule } from '../prices/price.module';
 import { LedgerModule } from '../ledger/ledger.module';
@@ -8,7 +9,10 @@ import { PortfolioController } from './portfolio.controller';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: GoldHolding.name, schema: GoldHoldingSchema }]),
+    MongooseModule.forFeature([
+      { name: GoldHolding.name, schema: GoldHoldingSchema },
+      { name: User.name, schema: UserSchema },
+    ]),
     PriceModule,
     LedgerModule,
   ],

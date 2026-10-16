@@ -6,6 +6,7 @@ import {
   CONVERSIONS,
   PurityGrade,
 } from '@aurumsave/shared';
+import { User, UserDocument } from '../../database/schemas/user.schema';
 import { GoldHolding, GoldHoldingDocument } from '../../database/schemas/gold-holding.schema';
 import { PriceService } from '../prices/price.service';
 import { LedgerService } from '../ledger/ledger.service';
@@ -14,6 +15,7 @@ import { LedgerService } from '../ledger/ledger.service';
 export class PortfolioService {
   constructor(
     @InjectModel(GoldHolding.name) private readonly holdingModel: Model<GoldHoldingDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly priceService: PriceService,
     private readonly ledgerService: LedgerService,
   ) {}
@@ -77,5 +79,78 @@ export class PortfolioService {
 
   async getPortfolioHistory(userId: string) {
     return this.ledgerService.getCustomerLedgerHistory(userId, 50, 0);
+  }
+
+  async getAccountStatement(userId: string, startDate?: string, endDate?: string) {
+    const userObjectId = new Types.ObjectId(userId);
+    const user = await this.userModel.findById(userObjectId).select('fullName email phone kycStatus createdAt').lean();
+
+    const ledgerEntries = await this.ledgerService.getCustomerLedgerHistory(userId, 500, 0);
+    const currentSummary = await this.getPortfolioSummary(userId);
+
+    // Filter by date range if provided
+    const filteredEntries = ledgerEntries.entries.filter((e: any) => {
+      const d = new Date(e.createdAt);
+      if (startDate && d < new Date(startDate)) return false;
+      if (endDate && d > new Date(endDate)) return false;
+      return true;
+    });
+
+    let totalCreditedGoldMg = 0;
+    let totalDebitedGoldMg = 0;
+    let totalDepositedPoisha = 0;
+    let totalLiquidatedPoisha = 0;
+
+    for (const item of filteredEntries) {
+      totalCreditedGoldMg += item.creditGoldMg || 0;
+      totalDebitedGoldMg += item.debitGoldMg || 0;
+      totalDepositedPoisha += item.creditPoisha || 0;
+      totalLiquidatedPoisha += item.debitPoisha || 0;
+    }
+
+    const statementId = `STMT-${Date.now()}-${userId.slice(-6).toUpperCase()}`;
+
+    return {
+      statementId,
+      institution: {
+        name: 'AurumSave Bullion Vaults Ltd.',
+        license: 'Bangladesh Bank AML/CFT Compliant Bullion Depository',
+        address: 'Gulshan Financial District, Dhaka-1212, Bangladesh',
+      },
+      accountHolder: {
+        userId,
+        fullName: user?.fullName || 'Valued Customer',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        kycStatus: user?.kycStatus || 'UNVERIFIED',
+      },
+      statementPeriod: {
+        from: startDate || (user as any)?.createdAt || new Date(Date.now() - 30 * 86400000).toISOString(),
+        to: endDate || new Date().toISOString(),
+        generatedAt: new Date().toISOString(),
+      },
+      summary: {
+        totalGoldGrams: currentSummary.totalGoldGrams,
+        availableGoldGrams: currentSummary.availableGoldGrams,
+        currentValuationBdt: currentSummary.totalValuationBdt,
+        periodPurchasedGrams: Number((totalCreditedGoldMg / CONVERSIONS.MILLIGRAMS_PER_GRAM).toFixed(4)),
+        periodLiquidatedGrams: Number((totalDebitedGoldMg / CONVERSIONS.MILLIGRAMS_PER_GRAM).toFixed(4)),
+        periodDepositedBdt: totalDepositedPoisha / CONVERSIONS.POISHA_PER_BDT,
+        periodLiquidatedBdt: totalLiquidatedPoisha / CONVERSIONS.POISHA_PER_BDT,
+        unrealizedGainLossBdt: currentSummary.unrealizedGainLossBdt,
+        unrealizedGainLossPercentage: currentSummary.unrealizedGainLossPercentage,
+      },
+      holdingsBreakdown: currentSummary.breakdownByPurity,
+      transactions: filteredEntries.map((e: any) => ({
+        entryId: e.entryId,
+        date: e.createdAt,
+        type: e.type,
+        description: e.description,
+        orderId: e.orderId,
+        goldChangeGrams: Number((((e.creditGoldMg || 0) - (e.debitGoldMg || 0)) / CONVERSIONS.MILLIGRAMS_PER_GRAM).toFixed(4)),
+        fiatAmountBdt: ((e.creditPoisha || 0) + (e.debitPoisha || 0)) / CONVERSIONS.POISHA_PER_BDT,
+        runningGoldBalanceGrams: Number(((e.runningGoldBalanceMg || 0) / CONVERSIONS.MILLIGRAMS_PER_GRAM).toFixed(4)),
+      })),
+    };
   }
 }

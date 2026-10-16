@@ -19,13 +19,44 @@ export class StaffController {
   ) {}
 
   @Get('admin/overview')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.AUDITOR)
   @ApiOperation({ summary: 'Platform operational metrics and key performance indicators' })
   async getOverview() {
     const data = await this.staffService.getAdminOverview();
     return {
       success: true,
       data,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('admin/settings')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get platform operational configurations and compliance limits' })
+  async getSettings() {
+    const settings = await this.staffService.getPlatformSettings();
+    return {
+      success: true,
+      data: settings,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('admin/settings')
+  @Roles(Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Modify platform configuration (Super Admin exclusive)' })
+  async updateSetting(
+    @Body('key') key: string,
+    @Body('value') value: any,
+    @Body('description') description: string,
+    @CurrentUser('id') adminId: string,
+    @CurrentUser('role') adminRole: Role,
+  ) {
+    const result = await this.staffService.updatePlatformSetting(key, value, description, adminId, adminRole);
+    return {
+      success: true,
+      message: result.message,
+      data: result.setting,
       timestamp: new Date().toISOString(),
     };
   }
@@ -83,10 +114,22 @@ export class StaffController {
   }
 
   @Get('operations/reconciliation')
-  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN, Role.AUDITOR)
   @ApiOperation({ summary: 'Automated financial reconciliation report' })
   async getReconciliation() {
     const report = await this.staffService.getReconciliationReport();
+    return {
+      success: true,
+      data: report,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('operations/reports/financial')
+  @Roles(Role.FINANCE_OFFICER, Role.ADMIN, Role.SUPER_ADMIN, Role.AUDITOR)
+  @ApiOperation({ summary: 'Comprehensive financial statement and volume report' })
+  async getFinancialReports() {
+    const report = await this.staffService.getFinancialReports();
     return {
       success: true,
       data: report,

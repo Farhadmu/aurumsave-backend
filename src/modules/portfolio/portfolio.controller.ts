@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PortfolioService } from './portfolio.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,6 +30,21 @@ export class PortfolioController {
       success: true,
       data: result.entries,
       meta: { total: result.total },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('statement')
+  @ApiOperation({ summary: 'Generate and retrieve official customer account statement' })
+  async getStatement(
+    @CurrentUser('id') userId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const statement = await this.portfolioService.getAccountStatement(userId, startDate, endDate);
+    return {
+      success: true,
+      data: statement,
       timestamp: new Date().toISOString(),
     };
   }
