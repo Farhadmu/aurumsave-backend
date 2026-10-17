@@ -17,6 +17,7 @@ export class AuditService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    await this.auditModel.createCollection().catch(() => {});
     await this.ensureHistoricalChainIntegrity();
   }
 
