@@ -7,6 +7,12 @@ import { LedgerEntry, LedgerEntrySchema } from '../../database/schemas/ledger-en
 import { GoldHolding, GoldHoldingSchema } from '../../database/schemas/gold-holding.schema';
 import { SupportTicket, SupportTicketSchema } from '../../database/schemas/support-ticket.schema';
 import { PlatformSetting, PlatformSettingSchema } from '../../database/schemas/platform-setting.schema';
+import { DualApprovalRequest, DualApprovalRequestSchema } from '../../database/schemas/dual-approval.schema';
+import { Supplier, SupplierSchema } from '../../database/schemas/supplier.schema';
+import { VaultCustodyRecord, VaultCustodyRecordSchema } from '../../database/schemas/vault-custody.schema';
+import { PurchaseOrder, PurchaseOrderSchema } from '../../database/schemas/purchase-order.schema';
+import { CmsContent, CmsContentSchema } from '../../database/schemas/cms-content.schema';
+import { GoldPrice, GoldPriceSchema } from '../../database/schemas/gold-price.schema';
 import { StaffService } from './staff.service';
 import { StaffController } from './staff.controller';
 
@@ -20,6 +26,12 @@ import { StaffController } from './staff.controller';
       { name: GoldHolding.name, schema: GoldHoldingSchema },
       { name: SupportTicket.name, schema: SupportTicketSchema },
       { name: PlatformSetting.name, schema: PlatformSettingSchema },
+      { name: DualApprovalRequest.name, schema: DualApprovalRequestSchema },
+      { name: Supplier.name, schema: SupplierSchema },
+      { name: VaultCustodyRecord.name, schema: VaultCustodyRecordSchema },
+      { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
+      { name: CmsContent.name, schema: CmsContentSchema },
+      { name: GoldPrice.name, schema: GoldPriceSchema },
     ]),
   ],
   controllers: [StaffController],

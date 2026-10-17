@@ -47,6 +47,11 @@ export enum Permission {
   USER_ROLE_ASSIGN = 'USER_ROLE_ASSIGN',
   RECONCILIATION_VIEW = 'RECONCILIATION_VIEW',
   AUDIT_VIEW_ALL = 'AUDIT_VIEW_ALL',
+  SUPER_ADMIN_MANAGE_SUPPLIERS = 'SUPER_ADMIN_MANAGE_SUPPLIERS',
+  SUPER_ADMIN_MANAGE_VAULT = 'SUPER_ADMIN_MANAGE_VAULT',
+  SUPER_ADMIN_DUAL_APPROVAL = 'SUPER_ADMIN_DUAL_APPROVAL',
+  SUPER_ADMIN_MANAGE_CMS = 'SUPER_ADMIN_MANAGE_CMS',
+  SUPER_ADMIN_EMERGENCY_CONTROL = 'SUPER_ADMIN_EMERGENCY_CONTROL',
 }
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
@@ -260,6 +265,122 @@ export enum AuditAction {
   ADMIN_SETTING_UPDATED = 'ADMIN_SETTING_UPDATED',
   SYSTEM_ALERT = 'SYSTEM_ALERT',
   SECURITY_EVENT = 'SECURITY_EVENT',
+  DUAL_APPROVAL_REQUESTED = 'DUAL_APPROVAL_REQUESTED',
+  DUAL_APPROVAL_DECIDED = 'DUAL_APPROVAL_DECIDED',
+  SUPPLIER_UPDATED = 'SUPPLIER_UPDATED',
+  PURCHASE_ORDER_CREATED = 'PURCHASE_ORDER_CREATED',
+  VAULT_CUSTODY_UPDATED = 'VAULT_CUSTODY_UPDATED',
+  CMS_CONTENT_PUBLISHED = 'CMS_CONTENT_PUBLISHED',
+  EMERGENCY_KILLSWITCH_TRIGGERED = 'EMERGENCY_KILLSWITCH_TRIGGERED',
+}
+
+export enum DualApprovalOperation {
+  PRICE_OVERRIDE = 'PRICE_OVERRIDE',
+  LEDGER_ADJUSTMENT = 'LEDGER_ADJUSTMENT',
+  PAYMENT_REFUND = 'PAYMENT_REFUND',
+  ACCOUNT_UNFREEZE = 'ACCOUNT_UNFREEZE',
+  TREASURY_TRANSFER = 'TREASURY_TRANSFER',
+  EMERGENCY_KILLSWITCH = 'EMERGENCY_KILLSWITCH',
+}
+
+export enum DualApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum VaultCustodyStatus {
+  IN_VAULT = 'IN_VAULT',
+  ALLOCATED_TO_CUSTOMERS = 'ALLOCATED_TO_CUSTOMERS',
+  DISPATCHED_REDEMPTION = 'DISPATCHED_REDEMPTION',
+  IN_TRANSIT = 'IN_TRANSIT',
+}
+
+export enum PurchaseOrderStatus {
+  DRAFT = 'DRAFT',
+  PLACED = 'PLACED',
+  SETTLED = 'SETTLED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum CmsContentType {
+  BANNER = 'BANNER',
+  ANNOUNCEMENT = 'ANNOUNCEMENT',
+  FAQ = 'FAQ',
+  ACADEMY_ARTICLE = 'ACADEMY_ARTICLE',
+  SEO_METADATA = 'SEO_METADATA',
+}
+
+export interface SupplierDto {
+  supplierId: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  licenseNumber: string;
+  purityGradesOffered: PurityGrade[];
+  currentBidQuotePoishaPerGram: number;
+  currentAskQuotePoishaPerGram: number;
+  isActive: boolean;
+  rating: number;
+}
+
+export interface VaultCustodyRecordDto {
+  recordId: string;
+  vaultLocation: string;
+  depositoryPartner: string;
+  barSerialNumber: string;
+  purity: PurityGrade;
+  weightGrams: number;
+  weightMilligrams: number;
+  assayCertificateNumber: string;
+  status: VaultCustodyStatus;
+  verifiedByStaffId?: string;
+  verifiedAt?: string;
+}
+
+export interface PurchaseOrderDto {
+  poNumber: string;
+  supplierId: string;
+  supplierName: string;
+  purity: PurityGrade;
+  weightGrams: number;
+  weightMilligrams: number;
+  ratePerGramPoisha: number;
+  totalPoisha: number;
+  status: PurchaseOrderStatus;
+  paymentReference?: string;
+  vaultRecordId?: string;
+}
+
+export interface DualApprovalRequestDto {
+  requestId: string;
+  operationType: DualApprovalOperation;
+  payload: Record<string, any>;
+  reason: string;
+  makerId: string;
+  makerRole: Role;
+  makerName?: string;
+  status: DualApprovalStatus;
+  checkerId?: string;
+  checkerRole?: Role;
+  checkerName?: string;
+  decisionNote?: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface CmsContentDto {
+  slug: string;
+  contentType: CmsContentType;
+  titleEn: string;
+  titleBn: string;
+  bodyEn: string;
+  bodyBn: string;
+  metadata?: Record<string, any>;
+  isPublished: boolean;
+  priorityOrder: number;
 }
 
 export interface UserSummary {

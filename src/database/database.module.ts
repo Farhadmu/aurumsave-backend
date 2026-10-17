@@ -17,6 +17,11 @@ import { SupportMessage, SupportMessageSchema } from './schemas/support-message.
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema';
 import { PlatformSetting, PlatformSettingSchema } from './schemas/platform-setting.schema';
 import { SavingsGoal, SavingsGoalSchema } from './schemas/savings-goal.schema';
+import { DualApprovalRequest, DualApprovalRequestSchema } from './schemas/dual-approval.schema';
+import { Supplier, SupplierSchema } from './schemas/supplier.schema';
+import { VaultCustodyRecord, VaultCustodyRecordSchema } from './schemas/vault-custody.schema';
+import { PurchaseOrder, PurchaseOrderSchema } from './schemas/purchase-order.schema';
+import { CmsContent, CmsContentSchema } from './schemas/cms-content.schema';
 
 import * as mongoose from 'mongoose';
 
@@ -89,6 +94,11 @@ let mongodInstance: MongoMemoryServer | null = null;
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: PlatformSetting.name, schema: PlatformSettingSchema },
       { name: SavingsGoal.name, schema: SavingsGoalSchema },
+      { name: DualApprovalRequest.name, schema: DualApprovalRequestSchema },
+      { name: Supplier.name, schema: SupplierSchema },
+      { name: VaultCustodyRecord.name, schema: VaultCustodyRecordSchema },
+      { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
+      { name: CmsContent.name, schema: CmsContentSchema },
     ]),
   ],
   exports: [MongooseModule],
