@@ -3,13 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { KycStatus, Role, AuditAction } from '@aurumsave/shared';
+import { KycStatus, KycDocumentType, Role, AuditAction } from '@aurumsave/shared';
 import { KycApplication, KycApplicationDocument } from '../../database/schemas/kyc-application.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { CustomerProfile, CustomerProfileDocument } from '../../database/schemas/customer-profile.schema';
@@ -20,6 +21,8 @@ const STORAGE_DIR = path.resolve(process.cwd(), 'storage', 'kyc');
 
 @Injectable()
 export class KycService {
+  private readonly logger = new Logger(KycService.name);
+
   constructor(
     @InjectModel(KycApplication.name) private readonly kycModel: Model<KycApplicationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
