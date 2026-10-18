@@ -18,6 +18,73 @@ export class KycApplication {
   @Prop({ required: true, trim: true })
   idNumber: string;
 
+  @Prop({ trim: true })
+  fullName?: string;
+
+  @Prop({ trim: true })
+  fatherName?: string;
+
+  @Prop({ trim: true })
+  motherName?: string;
+
+  @Prop()
+  dateOfBirth?: Date;
+
+  @Prop({ trim: true })
+  occupation?: string;
+
+  @Prop({
+    type: {
+      division: String,
+      district: String,
+      upazila: String,
+      addressLine1: String,
+      postalCode: String,
+    },
+    default: {},
+  })
+  presentAddress?: {
+    division: string;
+    district: string;
+    upazila: string;
+    addressLine1: string;
+    postalCode: string;
+  };
+
+  @Prop({
+    type: {
+      division: String,
+      district: String,
+      upazila: String,
+      addressLine1: String,
+      postalCode: String,
+    },
+    default: {},
+  })
+  permanentAddress?: {
+    division: string;
+    district: string;
+    upazila: string;
+    addressLine1: string;
+    postalCode: string;
+  };
+
+  @Prop({
+    type: {
+      name: String,
+      relationship: String,
+      phone: String,
+      nidNumber: String,
+    },
+    default: {},
+  })
+  nominee?: {
+    name: string;
+    relationship: string;
+    phone: string;
+    nidNumber: string;
+  };
+
   @Prop({
     type: [
       {

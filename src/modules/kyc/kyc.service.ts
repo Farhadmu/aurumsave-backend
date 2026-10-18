@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { KycStatus, Role, AuditAction } from '@aurumsave/shared';
 import { KycApplication, KycApplicationDocument } from '../../database/schemas/kyc-application.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
+import { CustomerProfile, CustomerProfileDocument } from '../../database/schemas/customer-profile.schema';
 import { AuditService } from '../audit/audit.service';
 import { SubmitKycDto, ReviewKycDto } from './kyc.dto';
 
@@ -22,6 +23,7 @@ export class KycService {
   constructor(
     @InjectModel(KycApplication.name) private readonly kycModel: Model<KycApplicationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(CustomerProfile.name) private readonly profileModel: Model<CustomerProfileDocument>,
     private readonly auditService: AuditService,
   ) {
     if (!fs.existsSync(STORAGE_DIR)) {
@@ -180,11 +182,45 @@ export class KycService {
       status: KycStatus.PENDING_REVIEW,
       idType: dto.idType,
       idNumber: dto.idNumber,
+      fullName: dto.fullName || user.fullName,
+      fatherName: dto.fatherName,
+      motherName: dto.motherName,
+      dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+      occupation: dto.occupation,
+      presentAddress: dto.presentAddress,
+      permanentAddress: dto.permanentAddress,
+      nominee: dto.nominee,
       documents: sanitizedDocs,
     });
 
+    if (dto.fullName && dto.fullName.trim()) {
+      user.fullName = dto.fullName.trim();
+    }
     user.kycStatus = KycStatus.PENDING_REVIEW;
     await user.save();
+
+    // Sync to CustomerProfile
+    try {
+      await this.profileModel.findOneAndUpdate(
+        { userId: userObjectId },
+        {
+          $set: {
+            userId: userObjectId,
+            nidNumber: dto.idNumber,
+            fatherName: dto.fatherName,
+            motherName: dto.motherName,
+            dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+            occupation: dto.occupation,
+            presentAddress: dto.presentAddress,
+            permanentAddress: dto.permanentAddress,
+            nominee: dto.nominee,
+          },
+        },
+        { upsert: true, new: true },
+      );
+    } catch (err: any) {
+      // Non-fatal profile sync fallback
+    }
 
     await this.auditService.log({
       actorId: userId,
@@ -192,7 +228,11 @@ export class KycService {
       action: AuditAction.KYC_SUBMITTED,
       entityType: 'KycApplication',
       entityId: application._id.toString(),
-      details: { idType: dto.idType, docCount: dto.documents.length },
+      details: {
+        idType: dto.idType,
+        idNumber: dto.idNumber,
+        docCount: dto.documents.length,
+      },
     });
 
     return application;
@@ -274,5 +314,26 @@ export class KycService {
     });
 
     return application;
+  }
+
+  async getUserKycDossier(userId: string) {
+    const userObjectId = new Types.ObjectId(userId);
+    const [user, profile, latestApplication, allApplications] = await Promise.all([
+      this.userModel.findById(userObjectId).select('-passwordHash').lean(),
+      this.profileModel.findOne({ userId: userObjectId }).lean(),
+      this.kycModel.findOne({ userId: userObjectId }).sort({ createdAt: -1 }).lean(),
+      this.kycModel.find({ userId: userObjectId }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      user,
+      profile,
+      latestApplication,
+      allApplications,
+    };
   }
 }

@@ -87,6 +87,18 @@ export class KycController {
     };
   }
 
+  @Get('compliance/kyc/user/:userId')
+  @Roles(Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN, Role.AUDITOR)
+  @ApiOperation({ summary: 'Get complete customer NID registration dossier for admin inspection' })
+  async getUserDossier(@Param('userId') userId: string) {
+    const result = await this.kycService.getUserKycDossier(userId);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('compliance/kyc/documents/:storageKey')
   @Roles(Role.CUSTOMER, Role.KYC_OFFICER, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Secure document viewing stream for document owners and compliance officers' })

@@ -13,6 +13,60 @@ export class SubmitKycDto {
   @IsNotEmpty()
   idNumber: string;
 
+  @ApiPropertyOptional({ example: 'Abdur Rahim' })
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @ApiPropertyOptional({ example: 'Abdul Jalil' })
+  @IsOptional()
+  @IsString()
+  fatherName?: string;
+
+  @ApiPropertyOptional({ example: 'Rasheda Begum' })
+  @IsOptional()
+  @IsString()
+  motherName?: string;
+
+  @ApiPropertyOptional({ example: '1990-05-15' })
+  @IsOptional()
+  @IsString()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ example: 'Private Service / Business' })
+  @IsOptional()
+  @IsString()
+  occupation?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  presentAddress?: {
+    division: string;
+    district: string;
+    upazila: string;
+    addressLine1: string;
+    postalCode: string;
+  };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  permanentAddress?: {
+    division: string;
+    district: string;
+    upazila: string;
+    addressLine1: string;
+    postalCode: string;
+  };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  nominee?: {
+    name: string;
+    relationship: string;
+    phone: string;
+    nidNumber: string;
+  };
+
   @ApiProperty({
     type: [Object],
     example: [

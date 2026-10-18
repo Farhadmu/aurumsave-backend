@@ -11,11 +11,57 @@ export class CustomerProfile {
   @Prop({ trim: true })
   nidNumber?: string;
 
+  @Prop({ trim: true })
+  fatherName?: string;
+
+  @Prop({ trim: true })
+  motherName?: string;
+
   @Prop()
   dateOfBirth?: Date;
 
   @Prop({ trim: true })
   occupation?: string;
+
+  @Prop({
+    type: {
+      addressLine1: String,
+      city: String,
+      upazila: String,
+      district: String,
+      division: String,
+      postalCode: String,
+    },
+    default: {},
+  })
+  presentAddress?: {
+    addressLine1?: string;
+    city?: string;
+    upazila?: string;
+    district?: string;
+    division?: string;
+    postalCode?: string;
+  };
+
+  @Prop({
+    type: {
+      addressLine1: String,
+      city: String,
+      upazila: String,
+      district: String,
+      division: String,
+      postalCode: String,
+    },
+    default: {},
+  })
+  permanentAddress?: {
+    addressLine1?: string;
+    city?: string;
+    upazila?: string;
+    district?: string;
+    division?: string;
+    postalCode?: string;
+  };
 
   @Prop({
     type: {
@@ -40,12 +86,14 @@ export class CustomerProfile {
       name: String,
       relationship: String,
       phone: String,
+      nidNumber: String,
     },
   })
   nominee?: {
     name: string;
     relationship: string;
     phone: string;
+    nidNumber?: string;
   };
 
   @Prop({ trim: true })
