@@ -42,81 +42,137 @@ export class OfficialStoreService implements OnModuleInit {
 
   async seedInitialOfficialProducts() {
     try {
-      const count = await this.productModel.countDocuments();
-      if (count === 0) {
-        this.logger.log('Seeding official AurumSave minted bullion products (1g, 5g, 10g, 1 Bhori)...');
-        await this.productModel.create([
-          {
-            productId: 'PROD-BAR-1G-24K',
-            titleEn: 'AurumSave Sovereign 1g 24K Minted Gold Bar',
-            titleBn: 'অরামসেভ ১ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
-            slug: '1g-24k-minted-gold-bar',
-            productType: 'MINTED_BAR',
-            purity: PurityGrade.K24,
-            weightGrams: 1.0,
-            weightMilligrams: 1000,
-            makingFeePoisha: 45000, // ৳450 tamper-proof blister fee
-            inStockQuantity: 25,
-            reservedQuantity: 0,
-            images: ['/images/hero/bullion-macro.jpg'],
-            certifier: 'BSTI & PAMP Assay Certified',
-            standard: 'LBMA Good Delivery Standard',
-            isActive: true,
-          },
-          {
-            productId: 'PROD-BAR-5G-24K',
-            titleEn: 'AurumSave Sovereign 5g 24K Minted Gold Bar',
-            titleBn: 'অরামসেভ ৫ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
-            slug: '5g-24k-minted-gold-bar',
-            productType: 'MINTED_BAR',
-            purity: PurityGrade.K24,
-            weightGrams: 5.0,
-            weightMilligrams: 5000,
-            makingFeePoisha: 125000, // ৳1,250 making fee
-            inStockQuantity: 15,
-            reservedQuantity: 0,
-            images: ['/images/hero/vault-cinematic.jpg'],
-            certifier: 'BSTI & PAMP Assay Certified',
-            standard: 'LBMA Good Delivery Standard',
-            isActive: true,
-          },
-          {
-            productId: 'PROD-BAR-10G-24K',
-            titleEn: 'AurumSave Sovereign 10g 24K Minted Gold Bar',
-            titleBn: 'অরামসেভ ১০ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
-            slug: '10g-24k-minted-gold-bar',
-            productType: 'MINTED_BAR',
-            purity: PurityGrade.K24,
-            weightGrams: 10.0,
-            weightMilligrams: 10000,
-            makingFeePoisha: 200000, // ৳2,000 making fee
-            inStockQuantity: 10,
-            reservedQuantity: 0,
-            images: ['/images/hero/texture-cinematic.jpg'],
-            certifier: 'BSTI & Valcambi Assay Certified',
-            standard: 'LBMA Good Delivery Standard',
-            isActive: true,
-          },
-          {
-            productId: 'PROD-BAR-1BHORI-22K',
-            titleEn: 'AurumSave Heritage 1 Bhori (11.664g) 22K Investment Bar',
-            titleBn: 'অরামসেভ হেরিটেজ ১ ভরি (১১.৬৬৪ গ্রাম) ২২ ক্যারেট গোল্ড বার',
-            slug: '1-bhori-22k-investment-bar',
-            productType: 'CAST_BAR',
-            purity: PurityGrade.K22,
-            weightGrams: 11.664,
-            weightMilligrams: 11664,
-            makingFeePoisha: 250000, // ৳2,500 making fee
-            inStockQuantity: 8,
-            reservedQuantity: 0,
-            images: ['/images/hero/bullion-macro.jpg'],
-            certifier: 'BSTI Hallmark 916 Assayed',
-            standard: 'Bangladesh Jewellery Standard',
-            isActive: true,
-          },
-        ]);
-        this.logger.log('Official gold store products seeded successfully.');
+      const initialProducts = [
+        {
+          productId: 'PROD-BAR-1G-24K',
+          titleEn: 'AurumSave Sovereign 1g 24K Minted Gold Bar',
+          titleBn: 'অরামসেভ ১ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
+          slug: '1g-24k-minted-gold-bar',
+          productType: 'MINTED_BAR',
+          purity: PurityGrade.K24,
+          weightGrams: 1.0,
+          weightMilligrams: 1000,
+          makingFeePoisha: 45000, // ৳450 tamper-proof blister fee
+          inStockQuantity: 50,
+          reservedQuantity: 0,
+          images: ['/images/hero/bullion-macro.jpg'],
+          certifier: 'BSTI & PAMP Assay Certified',
+          standard: 'LBMA Good Delivery Standard',
+          packagingType: 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: '99.99% pure 24K fine investment gold bar sealed in bank-grade CertiPAMP assay card with security hologram.',
+          descriptionBn: '৯৯.৯৯% খাঁটি ২৪ ক্যারেট ফাইন গোল্ড বার, সিকিউরিটি হলোগ্রাম ও সার্টিপ্যাম্প অ্যাসে প্যাক দ্বারা সুরক্ষিত।',
+          isActive: true,
+        },
+        {
+          productId: 'PROD-BAR-2G-24K',
+          titleEn: 'AurumSave Sovereign 2g 24K Minted Gold Bar',
+          titleBn: 'অরামসেভ ২ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
+          slug: '2g-24k-minted-gold-bar',
+          productType: 'MINTED_BAR',
+          purity: PurityGrade.K24,
+          weightGrams: 2.0,
+          weightMilligrams: 2000,
+          makingFeePoisha: 65000, // ৳650 making fee
+          inStockQuantity: 40,
+          reservedQuantity: 0,
+          images: ['/images/hero/bullion-macro.jpg'],
+          certifier: 'BSTI & Emirates Gold Assayed',
+          standard: 'LBMA Good Delivery Standard',
+          packagingType: 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: 'Serialized 2g 24K gold bar with individual certificate number and anti-counterfeiting QR code.',
+          descriptionBn: 'সিরিয়ালাইজড ২ গ্রাম ২৪ ক্যারেট গোল্ড বার, পৃথক সার্টিফিকেট নম্বর ও কিউআর কোড সহ।',
+          isActive: true,
+        },
+        {
+          productId: 'PROD-BAR-2.5G-24K',
+          titleEn: 'AurumSave Sovereign 2.5g 24K Minted Gold Bar',
+          titleBn: 'অরামসেভ ২.৫ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
+          slug: '2-5g-24k-minted-gold-bar',
+          productType: 'MINTED_BAR',
+          purity: PurityGrade.K24,
+          weightGrams: 2.5,
+          weightMilligrams: 2500,
+          makingFeePoisha: 80000, // ৳800 making fee
+          inStockQuantity: 30,
+          reservedQuantity: 0,
+          images: ['/images/hero/texture-cinematic.jpg'],
+          certifier: 'BSTI & Valcambi Assay Certified',
+          standard: 'LBMA Good Delivery Standard',
+          packagingType: 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: 'Precision minted 2.5g 24K investment gold bullion, ideal for disciplined monthly physical savers.',
+          descriptionBn: 'নিখুঁত মিন্টেড ২.৫ গ্রাম ২৪ ক্যারেট বিনিয়োগ গোল্ড বার, নিয়মিত স্বর্ণ সঞ্চয়কারীদের জন্য আদর্শ।',
+          isActive: true,
+        },
+        {
+          productId: 'PROD-BAR-5G-24K',
+          titleEn: 'AurumSave Sovereign 5g 24K Minted Gold Bar',
+          titleBn: 'অরামসেভ ৫ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
+          slug: '5g-24k-minted-gold-bar',
+          productType: 'MINTED_BAR',
+          purity: PurityGrade.K24,
+          weightGrams: 5.0,
+          weightMilligrams: 5000,
+          makingFeePoisha: 125000, // ৳1,250 making fee
+          inStockQuantity: 25,
+          reservedQuantity: 0,
+          images: ['/images/hero/vault-cinematic.jpg'],
+          certifier: 'BSTI & PAMP Assay Certified',
+          standard: 'LBMA Good Delivery Standard',
+          packagingType: 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: '999.9 fine gold investment bar crafted to international LBMA bullion specifications with tamper-proof blister.',
+          descriptionBn: 'আন্তর্জাতিক এলবিএমএ মানসম্পন্ন ৯৯৯.৯ খাঁটি স্বর্ণ বার, ব্যাংকিং গ্রেড নিরাপত্তায় মোড়কজাত।',
+          isActive: true,
+        },
+        {
+          productId: 'PROD-BAR-10G-24K',
+          titleEn: 'AurumSave Sovereign 10g 24K Minted Gold Bar',
+          titleBn: 'অরামসেভ ১০ গ্রাম ২৪ ক্যারেট মিন্টেড গোল্ড বার',
+          slug: '10g-24k-minted-gold-bar',
+          productType: 'MINTED_BAR',
+          purity: PurityGrade.K24,
+          weightGrams: 10.0,
+          weightMilligrams: 10000,
+          makingFeePoisha: 200000, // ৳2,000 making fee
+          inStockQuantity: 20,
+          reservedQuantity: 0,
+          images: ['/images/hero/texture-cinematic.jpg'],
+          certifier: 'BSTI & Valcambi Assay Certified',
+          standard: 'LBMA Good Delivery Standard',
+          packagingType: 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: 'Substantial 10g 24K gold bullion bar. Maximum liquidity and accepted nationwide by certified jewellers.',
+          descriptionBn: '১০ গ্রাম ২৪ ক্যারেট খাঁটি গোল্ড বার। সর্বোচ্চ নির্ভরযোগ্যতা ও দেশব্যাপী জুয়েলার্সদের দ্বারা স্বীকৃত।',
+          isActive: true,
+        },
+        {
+          productId: 'PROD-BAR-1BHORI-22K',
+          titleEn: 'AurumSave Heritage 1 Bhori (11.664g) 22K Investment Bar',
+          titleBn: 'অরামসেভ হেরিটেজ ১ ভরি (১১.৬৬৪ গ্রাম) ২২ ক্যারেট গোল্ড বার',
+          slug: '1-bhori-22k-investment-bar',
+          productType: 'CAST_BAR',
+          purity: PurityGrade.K22,
+          weightGrams: 11.664,
+          weightMilligrams: 11664,
+          makingFeePoisha: 250000, // ৳2,500 making fee
+          inStockQuantity: 15,
+          reservedQuantity: 0,
+          images: ['/images/hero/bullion-macro.jpg'],
+          certifier: 'BSTI Hallmark 916 Assayed',
+          standard: 'Bangladesh Jewellery Standard',
+          packagingType: 'Heritage Velvet Gift Box & Seal',
+          descriptionEn: 'Traditional 1 Bhori (11.664g) 22K (916) hallmarked gold bullion bar. Perfect for heritage family reserves.',
+          descriptionBn: 'ঐতিহ্যবাহী ১ ভরি (১১.৬৬৪ গ্রাম) ২২ ক্যারেট (৯১৬) হলমার্কযুক্ত খাঁটি স্বর্ণ বার। পারিবারিক সঞ্চয়ের বিশ্বস্ত প্রতীক।',
+          isActive: true,
+        },
+      ];
+
+      for (const prod of initialProducts) {
+        await this.productModel.findOneAndUpdate(
+          { productId: prod.productId },
+          { $setOnInsert: prod },
+          { upsert: true, new: true },
+        );
       }
+      this.logger.log('Official gold store products (1g to 10g + 1 Bhori) synced successfully.');
     } catch (err: any) {
       this.logger.warn(`Official products seed skipped: ${err.message}`);
     }
@@ -195,15 +251,38 @@ export class OfficialStoreService implements OnModuleInit {
     dto: {
       productId: string;
       quantity: number;
-      pickupPointId: string;
+      deliveryMethod?: 'HOME_DELIVERY' | 'PICKUP_POINT';
+      pickupPointId?: string;
+      shippingAddress?: {
+        fullName: string;
+        phone: string;
+        alternativePhone?: string;
+        recipientNid?: string;
+        division: string;
+        district: string;
+        upazila?: string;
+        addressLine: string;
+        postalCode?: string;
+        instructions?: string;
+      };
+      paymentMethod?: string;
+      paymentReference?: string;
     },
   ) {
     const quantity = Math.max(1, dto.quantity || 1);
+    const deliveryMethod = dto.deliveryMethod || (dto.shippingAddress ? 'HOME_DELIVERY' : 'PICKUP_POINT');
 
-    // Verify pickup point exists and is active
-    const pickup = await this.pickupModel.findOne({ pointId: dto.pickupPointId, status: 'ACTIVE' });
-    if (!pickup) {
-      throw new BadRequestException('Selected district pickup point is invalid or currently inactive');
+    let pickup: any = null;
+    if (deliveryMethod === 'PICKUP_POINT') {
+      const pointId = dto.pickupPointId || 'PKP-DHK-GULSHAN';
+      pickup = await this.pickupModel.findOne({ pointId, status: 'ACTIVE' });
+      if (!pickup) {
+        throw new BadRequestException('Selected district pickup point is invalid or currently inactive');
+      }
+    } else {
+      if (!dto.shippingAddress || !dto.shippingAddress.fullName || !dto.shippingAddress.phone || !dto.shippingAddress.addressLine) {
+        throw new BadRequestException('Full recipient name, phone, and delivery address are mandatory for home delivery');
+      }
     }
 
     // Atomically reserve stock
@@ -217,10 +296,14 @@ export class OfficialStoreService implements OnModuleInit {
       const goldValuePoisha = Math.round(rate.buyPricePerGramPoisha * product.weightGrams);
       const unitTotalPoisha = goldValuePoisha + product.makingFeePoisha;
       const subtotalPoisha = unitTotalPoisha * quantity;
-      const totalPoisha = subtotalPoisha;
+      
+      // Armored Courier delivery fee: ৳250 (25000 poisha) for Home Delivery, ৳0 for Pickup Point
+      const deliveryFeePoisha = deliveryMethod === 'HOME_DELIVERY' ? 25000 : 0;
+      const totalPoisha = subtotalPoisha + deliveryFeePoisha;
 
-      const orderId = `ORD-STR-${Date.now().toString().slice(-6)}-${uuidv4().substring(0, 4).toUpperCase()}`;
-      // Generate 6-digit handover OTP
+      const orderId = `AS-GOLD-${Math.floor(100000 + Math.random() * 900000)}`;
+      const trackingNumber = `TRK-${Date.now().toString().slice(-6)}-${uuidv4().substring(0, 4).toUpperCase()}`;
+      // Generate 6-digit handover verification OTP
       const pickupVerificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
       const order = await this.orderModel.create({
@@ -240,12 +323,20 @@ export class OfficialStoreService implements OnModuleInit {
           },
         ],
         subtotalPoisha,
-        platformFeePoisha: 0,
+        platformFeePoisha: deliveryFeePoisha,
         assayFeePoisha: 0,
         totalPoisha,
         paymentStatus: 'ESCROW_HELD',
-        fulfillmentStatus: FulfillmentStatus.READY_FOR_PICKUP,
-        pickupPointId: pickup.pointId,
+        paymentMethod: dto.paymentMethod || 'BKASH',
+        paymentReference: dto.paymentReference || `PAY-${Date.now()}`,
+        fulfillmentStatus:
+          deliveryMethod === 'HOME_DELIVERY'
+            ? FulfillmentStatus.PENDING_INSPECTION
+            : FulfillmentStatus.READY_FOR_PICKUP,
+        deliveryMethod,
+        shippingAddress: dto.shippingAddress,
+        trackingNumber,
+        pickupPointId: pickup ? pickup.pointId : 'HOME_DELIVERY',
         pickupVerificationOtp,
       });
 
@@ -293,9 +384,12 @@ export class OfficialStoreService implements OnModuleInit {
           weightMilligrams,
           makingFeePoisha: data.makingFeePoisha,
           inStockQuantity: data.inStockQuantity,
-          images: data.images || [],
-          certifier: data.certifier || 'BSTI Assay Certified',
+          images: data.images && data.images.length > 0 ? data.images : ['/images/hero/bullion-macro.jpg'],
+          certifier: data.certifier || 'BSTI & PAMP Assay Certified',
           standard: data.standard || 'LBMA Good Delivery Standard',
+          packagingType: data.packagingType || 'Tamper-Evident Security Assay Blister Pack',
+          descriptionEn: data.descriptionEn || '',
+          descriptionBn: data.descriptionBn || '',
           isActive: data.isActive !== undefined ? data.isActive : true,
         },
       },
@@ -303,5 +397,11 @@ export class OfficialStoreService implements OnModuleInit {
     );
 
     return updated;
+  }
+
+  async deleteProduct(productId: string) {
+    const deleted = await this.productModel.findOneAndDelete({ productId });
+    if (!deleted) throw new NotFoundException('Gold product not found');
+    return { success: true, message: `Product ${productId} deleted successfully` };
   }
 }

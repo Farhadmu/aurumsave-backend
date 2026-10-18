@@ -48,6 +48,15 @@ export class OfficialProduct {
   @Prop({ required: true, default: 'LBMA Good Delivery Standard' })
   standard: string;
 
+  @Prop({ default: 'Tamper-Evident Security Assay Blister Pack' })
+  packagingType: string;
+
+  @Prop({ default: '' })
+  descriptionEn?: string;
+
+  @Prop({ default: '' })
+  descriptionBn?: string;
+
   @Prop({ default: true, index: true })
   isActive: boolean;
 }

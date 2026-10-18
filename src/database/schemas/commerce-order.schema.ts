@@ -56,6 +56,15 @@ export class CommerceOrder {
   paymentStatus: string;
 
   @Prop({
+    enum: ['BKASH', 'NAGAD', 'STRIPE', 'WALLET', 'BANK_TRANSFER'],
+    default: 'BKASH',
+  })
+  paymentMethod: string;
+
+  @Prop()
+  paymentReference?: string;
+
+  @Prop({
     required: true,
     enum: FulfillmentStatus,
     default: FulfillmentStatus.PENDING_INSPECTION,
@@ -63,8 +72,32 @@ export class CommerceOrder {
   })
   fulfillmentStatus: FulfillmentStatus;
 
-  @Prop({ required: true, index: true })
-  pickupPointId: string;
+  @Prop({
+    enum: ['HOME_DELIVERY', 'PICKUP_POINT'],
+    default: 'PICKUP_POINT',
+    index: true,
+  })
+  deliveryMethod: 'HOME_DELIVERY' | 'PICKUP_POINT';
+
+  @Prop({ type: Object })
+  shippingAddress?: {
+    fullName: string;
+    phone: string;
+    alternativePhone?: string;
+    recipientNid?: string;
+    division: string;
+    district: string;
+    upazila?: string;
+    addressLine: string;
+    postalCode?: string;
+    instructions?: string;
+  };
+
+  @Prop({ index: true })
+  trackingNumber?: string;
+
+  @Prop({ index: true })
+  pickupPointId?: string;
 
   @Prop({ required: true })
   pickupVerificationOtp: string;

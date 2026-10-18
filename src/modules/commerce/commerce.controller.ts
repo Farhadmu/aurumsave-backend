@@ -62,10 +62,18 @@ export class CommerceController {
   @Post('store/orders')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Place order for official minted gold bullion bar with pickup desk reservation' })
+  @ApiOperation({ summary: 'Place order for official minted gold bullion bar with home delivery or pickup desk' })
   async createStoreOrder(
     @CurrentUser('id') buyerId: string,
-    @Body() dto: { productId: string; quantity: number; pickupPointId: string },
+    @Body() dto: {
+      productId: string;
+      quantity: number;
+      deliveryMethod?: 'HOME_DELIVERY' | 'PICKUP_POINT';
+      pickupPointId?: string;
+      shippingAddress?: any;
+      paymentMethod?: string;
+      paymentReference?: string;
+    },
   ) {
     const result = await this.storeService.createStoreOrder(buyerId, dto);
     return { success: true, ...result };
@@ -79,6 +87,16 @@ export class CommerceController {
   async upsertProduct(@CurrentUser('id') staffId: string, @Body() body: any) {
     const updated = await this.storeService.upsertProduct(body, staffId);
     return { success: true, data: updated };
+  }
+
+  @Delete('store/products/:productId')
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @RequirePermissions(Permission.COMMERCE_STORE_MANAGE)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin delete official product from company vault catalog' })
+  async deleteProduct(@Param('productId') productId: string) {
+    const result = await this.storeService.deleteProduct(productId);
+    return { success: true, ...result };
   }
 
   // ==========================================

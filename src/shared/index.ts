@@ -356,6 +356,9 @@ export interface OfficialProductDto {
   images: string[];
   certifier: string;
   standard: string;
+  packagingType?: string;
+  descriptionEn?: string;
+  descriptionBn?: string;
   isActive: boolean;
   calculatedPriceBdt?: number;
 }
