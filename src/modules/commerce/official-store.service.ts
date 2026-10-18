@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  UnauthorizedException,
   OnModuleInit,
   Logger,
 } from '@nestjs/common';
@@ -269,8 +270,32 @@ export class OfficialStoreService implements OnModuleInit {
       paymentReference?: string;
     },
   ) {
-    const quantity = Math.max(1, dto.quantity || 1);
+    if (!buyerId || !Types.ObjectId.isValid(buyerId)) {
+      throw new UnauthorizedException('Authentication required: Valid customer account required to purchase gold bullion');
+    }
+
+    if (!dto.productId || typeof dto.productId !== 'string') {
+      throw new BadRequestException('Valid gold bullion productId is required');
+    }
+
+    const quantity = Math.max(1, Math.min(50, Number(dto.quantity) || 1));
     const deliveryMethod = dto.deliveryMethod || (dto.shippingAddress ? 'HOME_DELIVERY' : 'PICKUP_POINT');
+
+    // Idempotency guard: prevent duplicate orders on rapid double-clicks or retries
+    if (dto.paymentReference) {
+      const existing = await this.orderModel.findOne({
+        paymentReference: dto.paymentReference,
+        buyerId: new Types.ObjectId(buyerId),
+      });
+      if (existing) {
+        this.logger.warn(`Idempotent order replay detected for payment reference: ${dto.paymentReference}`);
+        return {
+          success: true,
+          message: 'Order already confirmed.',
+          order: existing,
+        };
+      }
+    }
 
     let pickup: any = null;
     if (deliveryMethod === 'PICKUP_POINT') {
@@ -290,7 +315,7 @@ export class OfficialStoreService implements OnModuleInit {
 
     try {
       const product = await this.productModel.findOne({ productId: dto.productId });
-      if (!product) throw new NotFoundException('Product not found');
+      if (!product) throw new NotFoundException('Gold product not found in company catalog');
 
       const rate = await this.priceService.getRateForPurity(product.purity);
       const goldValuePoisha = Math.round(rate.buyPricePerGramPoisha * product.weightGrams);
@@ -340,19 +365,25 @@ export class OfficialStoreService implements OnModuleInit {
         pickupVerificationOtp,
       });
 
-      await this.auditService.log({
-        actorId: buyerId,
-        actorRole: Role.CUSTOMER,
-        action: AuditAction.COMMERCE_STORE_ORDER_CREATED,
-        entityType: 'CommerceOrder',
-        entityId: orderId,
-        details: {
-          productId: product.productId,
-          quantity,
-          totalBdt: totalPoisha / CONVERSIONS.POISHA_PER_BDT,
-          pickupPointId: pickup.pointId,
-        },
-      });
+      try {
+        await this.auditService.log({
+          actorId: buyerId,
+          actorRole: Role.CUSTOMER,
+          action: AuditAction.COMMERCE_STORE_ORDER_CREATED,
+          entityType: 'CommerceOrder',
+          entityId: orderId,
+          details: {
+            productId: product.productId,
+            quantity,
+            totalBdt: totalPoisha / CONVERSIONS.POISHA_PER_BDT,
+            pickupPointId: pickup ? pickup.pointId : 'HOME_DELIVERY',
+            deliveryMethod,
+            trackingNumber,
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Non-blocking audit log warning: ${auditErr?.message}`);
+      }
 
       return {
         success: true,
@@ -361,8 +392,19 @@ export class OfficialStoreService implements OnModuleInit {
       };
     } catch (err: any) {
       // Rollback stock reservation on failure
-      await this.releaseProductStock(dto.productId, quantity);
-      throw err;
+      await this.releaseProductStock(dto.productId, quantity).catch(() => {});
+      this.logger.error(`Store order placement failed: ${err.message}`, err.stack);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException ||
+        err instanceof ConflictException ||
+        err instanceof UnauthorizedException
+      ) {
+        throw err;
+      }
+      throw new BadRequestException(
+        err.message || 'Unable to complete gold bullion order. Please check inputs and retry.',
+      );
     }
   }
 
