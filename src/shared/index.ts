@@ -52,6 +52,10 @@ export enum Permission {
   SUPER_ADMIN_DUAL_APPROVAL = 'SUPER_ADMIN_DUAL_APPROVAL',
   SUPER_ADMIN_MANAGE_CMS = 'SUPER_ADMIN_MANAGE_CMS',
   SUPER_ADMIN_EMERGENCY_CONTROL = 'SUPER_ADMIN_EMERGENCY_CONTROL',
+  COMMERCE_STORE_MANAGE = 'COMMERCE_STORE_MANAGE',
+  COMMERCE_MARKETPLACE_REVIEW = 'COMMERCE_MARKETPLACE_REVIEW',
+  COMMERCE_PICKUP_MANAGE = 'COMMERCE_PICKUP_MANAGE',
+  COMMERCE_HANDOVER_CONFIRM = 'COMMERCE_HANDOVER_CONFIRM',
 }
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
@@ -272,6 +276,130 @@ export enum AuditAction {
   VAULT_CUSTODY_UPDATED = 'VAULT_CUSTODY_UPDATED',
   CMS_CONTENT_PUBLISHED = 'CMS_CONTENT_PUBLISHED',
   EMERGENCY_KILLSWITCH_TRIGGERED = 'EMERGENCY_KILLSWITCH_TRIGGERED',
+  COMMERCE_STORE_ORDER_CREATED = 'COMMERCE_STORE_ORDER_CREATED',
+  COMMERCE_MARKETPLACE_LISTED = 'COMMERCE_MARKETPLACE_LISTED',
+  COMMERCE_MARKETPLACE_REVIEWED = 'COMMERCE_MARKETPLACE_REVIEWED',
+  COMMERCE_ESCROW_LOCKED = 'COMMERCE_ESCROW_LOCKED',
+  COMMERCE_HANDOVER_CONFIRMED = 'COMMERCE_HANDOVER_CONFIRMED',
+  COMMERCE_PICKUP_POINT_UPDATED = 'COMMERCE_PICKUP_POINT_UPDATED',
+  JEWELLERY_SELL_REQUESTED = 'JEWELLERY_SELL_REQUESTED',
+  JEWELLERY_ASSAY_COMPLETED = 'JEWELLERY_ASSAY_COMPLETED',
+}
+
+export enum MarketplaceCategory {
+  GOLD_BAR = 'GOLD_BAR',
+  COIN = 'COIN',
+  NECKLACE = 'NECKLACE',
+  RING = 'RING',
+  BANGLE = 'BANGLE',
+  CHAIN = 'CHAIN',
+  EARRING = 'EARRING',
+  OTHER_JEWELLERY = 'OTHER_JEWELLERY',
+}
+
+export enum MarketplaceListingStatus {
+  DRAFT = 'DRAFT',
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  ACTIVE = 'ACTIVE',
+  RESERVED = 'RESERVED',
+  SOLD = 'SOLD',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum MarketplaceVerificationStatus {
+  UNVERIFIED = 'UNVERIFIED',
+  PHYSICALLY_ASSAYED = 'PHYSICALLY_ASSAYED',
+  HALLMARK_VERIFIED = 'HALLMARK_VERIFIED',
+  DOCUMENT_VERIFIED = 'DOCUMENT_VERIFIED',
+  REJECTED = 'REJECTED',
+}
+
+export enum ItemCondition {
+  NEW_IN_BLISTER = 'NEW_IN_BLISTER',
+  LIKE_NEW = 'LIKE_NEW',
+  USED_GOOD = 'USED_GOOD',
+  SCRAP_OR_DAMAGED = 'SCRAP_OR_DAMAGED',
+}
+
+export enum PickupPointStatus {
+  ACTIVE = 'ACTIVE',
+  MAINTENANCE = 'MAINTENANCE',
+  INACTIVE = 'INACTIVE',
+}
+
+export enum CommerceOrderType {
+  OFFICIAL_STORE = 'OFFICIAL_STORE',
+  MARKETPLACE = 'MARKETPLACE',
+  SCRAP_BUYBACK = 'SCRAP_BUYBACK',
+}
+
+export enum FulfillmentStatus {
+  PENDING_INSPECTION = 'PENDING_INSPECTION',
+  READY_FOR_PICKUP = 'READY_FOR_PICKUP',
+  HANDOVER_COMPLETED = 'HANDOVER_COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export interface OfficialProductDto {
+  productId: string;
+  titleEn: string;
+  titleBn: string;
+  slug: string;
+  productType: 'MINTED_BAR' | 'CAST_BAR' | 'COIN';
+  purity: PurityGrade;
+  weightGrams: number;
+  weightMilligrams: number;
+  makingFeePoisha: number;
+  inStockQuantity: number;
+  reservedQuantity: number;
+  images: string[];
+  certifier: string;
+  standard: string;
+  isActive: boolean;
+  calculatedPriceBdt?: number;
+}
+
+export interface MarketplaceListingDto {
+  listingId: string;
+  sellerId: string;
+  sellerName: string;
+  category: MarketplaceCategory;
+  title: string;
+  description: string;
+  photos: string[];
+  claimedPurity: PurityGrade;
+  claimedGrossWeightGrams: number;
+  claimedNetGoldWeightGrams: number;
+  stoneWastageDeductionGrams: number;
+  condition: ItemCondition;
+  askingPricePoisha: number;
+  askingPriceBdt?: number;
+  status: MarketplaceListingStatus;
+  verificationStatus: MarketplaceVerificationStatus;
+  verifiedPurity?: PurityGrade;
+  verifiedNetGoldWeightGrams?: number;
+  verifiedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
+export interface PickupPointDto {
+  pointId: string;
+  nameEn: string;
+  nameBn: string;
+  division: string;
+  district: string;
+  addressEn: string;
+  addressBn: string;
+  contactPerson: string;
+  phone: string;
+  operatingHours: string;
+  supportedServices: string[];
+  dailyCapacity: number;
+  currentScheduledToday: number;
+  status: PickupPointStatus;
+  securityFeatures: string[];
 }
 
 export enum DualApprovalOperation {

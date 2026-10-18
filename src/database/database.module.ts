@@ -22,6 +22,11 @@ import { Supplier, SupplierSchema } from './schemas/supplier.schema';
 import { VaultCustodyRecord, VaultCustodyRecordSchema } from './schemas/vault-custody.schema';
 import { PurchaseOrder, PurchaseOrderSchema } from './schemas/purchase-order.schema';
 import { CmsContent, CmsContentSchema } from './schemas/cms-content.schema';
+import { OfficialProduct, OfficialProductSchema } from './schemas/official-product.schema';
+import { MarketplaceListing, MarketplaceListingSchema } from './schemas/marketplace-listing.schema';
+import { PickupPoint, PickupPointSchema } from './schemas/pickup-point.schema';
+import { CommerceOrder, CommerceOrderSchema } from './schemas/commerce-order.schema';
+import { JewellerySellRequest, JewellerySellRequestSchema } from './schemas/jewellery-sell-request.schema';
 
 import * as mongoose from 'mongoose';
 
@@ -99,6 +104,11 @@ let mongodInstance: MongoMemoryServer | null = null;
       { name: VaultCustodyRecord.name, schema: VaultCustodyRecordSchema },
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
       { name: CmsContent.name, schema: CmsContentSchema },
+      { name: OfficialProduct.name, schema: OfficialProductSchema },
+      { name: MarketplaceListing.name, schema: MarketplaceListingSchema },
+      { name: PickupPoint.name, schema: PickupPointSchema },
+      { name: CommerceOrder.name, schema: CommerceOrderSchema },
+      { name: JewellerySellRequest.name, schema: JewellerySellRequestSchema },
     ]),
   ],
   exports: [MongooseModule],

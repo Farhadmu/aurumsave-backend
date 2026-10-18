@@ -17,6 +17,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { HealthModule } from './modules/health/health.module';
 import { GoalModule } from './modules/goals/goal.module';
 import { GiftModule } from './modules/gifts/gift.module';
+import { CommerceModule } from './modules/commerce/commerce.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { GiftModule } from './modules/gifts/gift.module';
     HealthModule,
     GoalModule,
     GiftModule,
+    CommerceModule,
   ],
 })
 export class AppModule {}
