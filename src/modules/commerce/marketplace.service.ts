@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -76,7 +77,7 @@ export interface AppraiseScrapDto {
 }
 
 @Injectable()
-export class MarketplaceService {
+export class MarketplaceService implements OnModuleInit {
   private readonly logger = new Logger(MarketplaceService.name);
 
   constructor(
@@ -91,6 +92,83 @@ export class MarketplaceService {
     private readonly priceService: PriceService,
     private readonly auditService: AuditService,
   ) {}
+
+  async onModuleInit() {
+    await this.seedInitialListings();
+  }
+
+  async seedInitialListings() {
+    try {
+      const count = await this.listingModel.countDocuments();
+      if (count === 0) {
+        this.logger.log('Seeding initial verified customer marketplace listings...');
+        await this.listingModel.create([
+          {
+            listingId: 'LST-BAR-5G-PAMP',
+            sellerId: new Types.ObjectId('650000000000000000000001'),
+            sellerName: 'Karim Ullah (Verified Private Client)',
+            category: MarketplaceCategory.GOLD_BAR,
+            title: 'PAMP Suisse 5g 24K Minted Gold Bar (Assayed Card)',
+            description: 'Original sealed blister pack from PAMP Suisse with certificate serial number #99214. Stored in temperature-controlled private locker.',
+            photos: ['/images/hero/vault-cinematic.jpg'],
+            claimedPurity: PurityGrade.K24,
+            verifiedPurity: PurityGrade.K24,
+            claimedGrossWeightGrams: 5.0,
+            claimedNetGoldWeightGrams: 5.0,
+            verifiedNetGoldWeightGrams: 5.0,
+            stoneWastageDeductionGrams: 0,
+            condition: ItemCondition.NEW_IN_BLISTER,
+            askingPricePoisha: 6280000,
+            status: MarketplaceListingStatus.ACTIVE,
+            verificationStatus: MarketplaceVerificationStatus.PHYSICALLY_ASSAYED,
+            verificationNotes: 'XRF Spectrometer verified 99.98% Au at Gulshan Depository Desk.',
+            verifiedAt: new Date(),
+          },
+          {
+            listingId: 'LST-CHAIN-1BHORI-22K',
+            sellerId: new Types.ObjectId('650000000000000000000002'),
+            sellerName: 'Farhana Yasmin',
+            category: MarketplaceCategory.CHAIN,
+            title: 'Heritage 1 Bhori (11.664g) 22K Solid Gold Rope Chain',
+            description: 'Traditional solid rope chain purchased from a reputed BAJUS jeweller with original memo. Net gold weight 11.200g after 0.464g hook/lock solder deduction.',
+            photos: ['/images/hero/bullion-macro.jpg'],
+            claimedPurity: PurityGrade.K22,
+            verifiedPurity: PurityGrade.K22,
+            claimedGrossWeightGrams: 11.664,
+            claimedNetGoldWeightGrams: 11.2,
+            verifiedNetGoldWeightGrams: 11.2,
+            stoneWastageDeductionGrams: 0.464,
+            condition: ItemCondition.LIKE_NEW,
+            askingPricePoisha: 13150000,
+            status: MarketplaceListingStatus.ACTIVE,
+            verificationStatus: MarketplaceVerificationStatus.DOCUMENT_VERIFIED,
+            verificationNotes: 'Original invoice and hallmark 916 verified by desk officer.',
+            verifiedAt: new Date(),
+          },
+          {
+            listingId: 'LST-RING-21K-VINTAGE',
+            sellerId: new Types.ObjectId('650000000000000000000003'),
+            sellerName: 'Tanvir Hossain',
+            category: MarketplaceCategory.RING,
+            title: 'Classic 21K Gold Wedding Ring (3.2g)',
+            description: 'Minimalist 21K gold band. Seeking safe handover via AurumSave escrow desk.',
+            photos: ['/images/hero/texture-cinematic.jpg'],
+            claimedPurity: PurityGrade.K21,
+            claimedGrossWeightGrams: 3.2,
+            claimedNetGoldWeightGrams: 3.2,
+            stoneWastageDeductionGrams: 0,
+            condition: ItemCondition.USED_GOOD,
+            askingPricePoisha: 3450000,
+            status: MarketplaceListingStatus.PENDING_REVIEW,
+            verificationStatus: MarketplaceVerificationStatus.UNVERIFIED,
+          },
+        ]);
+        this.logger.log('Initial verified marketplace listings seeded successfully.');
+      }
+    } catch (err: any) {
+      this.logger.warn(`Marketplace listings seed skipped: ${err.message}`);
+    }
+  }
 
   // 1. Create a customer listing (Starts as PENDING_REVIEW and UNVERIFIED)
   async createListing(userId: string, userName: string, dto: CreateListingDto) {
