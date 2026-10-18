@@ -29,7 +29,7 @@ export class KycController {
   constructor(private readonly kycService: KycService) {}
 
   @Post('kyc/upload')
-  @Roles(Role.CUSTOMER)
+  @Roles(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN)
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload KYC identity document securely to private storage' })
@@ -47,7 +47,7 @@ export class KycController {
   }
 
   @Post('kyc/applications')
-  @Roles(Role.CUSTOMER)
+  @Roles(Role.CUSTOMER, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Submit KYC identity verification documents' })
   async submitKyc(@CurrentUser('id') userId: string, @Body() dto: SubmitKycDto) {
     const result = await this.kycService.submitKyc(userId, dto);

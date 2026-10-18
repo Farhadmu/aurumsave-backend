@@ -142,100 +142,172 @@ export class KycService {
   }
 
   async submitKyc(userId: string, dto: SubmitKycDto): Promise<KycApplicationDocument> {
-    const userObjectId = new Types.ObjectId(userId);
-    const user = await this.userModel.findById(userObjectId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    if (user.kycStatus === KycStatus.APPROVED) {
-      throw new BadRequestException('Your KYC is already approved and verified');
-    }
-
-    const pending = await this.kycModel.findOne({
-      userId: userObjectId,
-      status: KycStatus.PENDING_REVIEW,
-    });
-    if (pending) {
-      throw new BadRequestException('You already have a KYC application pending compliance review');
-    }
-
-    if (!dto.documents || dto.documents.length === 0) {
-      throw new BadRequestException('At least one identity verification document must be attached');
-    }
-
-    const sanitizedDocs = dto.documents.map((d) => {
-      const storageKey = d.storageKey || (d.securePath ? path.basename(d.securePath) : `kyc_${userId}_${uuidv4().substring(0, 8)}.jpg`);
-      return {
-        docType: d.docType,
-        storageKey,
-        fileName: d.fileName || `${d.docType}.jpg`,
-        fileSize: d.fileSize || 1024 * 1024,
-        mimeType: d.mimeType || 'image/jpeg',
-        securePath: storageKey,
-        uploadedAt: new Date(),
-      };
-    });
-
-    const application = await this.kycModel.create({
-      userId: userObjectId,
-      status: KycStatus.PENDING_REVIEW,
-      idType: dto.idType,
-      idNumber: dto.idNumber,
-      fullName: dto.fullName || user.fullName,
-      fatherName: dto.fatherName,
-      motherName: dto.motherName,
-      dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-      occupation: dto.occupation,
-      presentAddress: dto.presentAddress,
-      permanentAddress: dto.permanentAddress,
-      nominee: dto.nominee,
-      documents: sanitizedDocs,
-    });
-
-    if (dto.fullName && dto.fullName.trim()) {
-      user.fullName = dto.fullName.trim();
-    }
-    user.kycStatus = KycStatus.PENDING_REVIEW;
-    await user.save();
-
-    // Sync to CustomerProfile
     try {
-      await this.profileModel.findOneAndUpdate(
-        { userId: userObjectId },
+      const userObjectId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
+      if (!userObjectId) {
+        throw new BadRequestException('Invalid user identification token');
+      }
+
+      const user = await this.userModel.findById(userObjectId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (user.kycStatus === KycStatus.APPROVED) {
+        throw new BadRequestException('Your KYC is already approved and verified');
+      }
+
+      if (!dto.documents || dto.documents.length === 0) {
+        throw new BadRequestException('At least one identity verification document must be attached');
+      }
+
+      // Safe Date Parsing
+      let parsedDob: Date | undefined = undefined;
+      if (dto.dateOfBirth) {
+        const parsed = new Date(dto.dateOfBirth);
+        if (!isNaN(parsed.getTime())) {
+          parsedDob = parsed;
+        }
+      }
+
+      // Sanitize & normalize document types
+      const sanitizedDocs = dto.documents.map((d) => {
+        const storageKey =
+          d.storageKey ||
+          (d.securePath ? path.basename(d.securePath) : `kyc_${userId}_${uuidv4().substring(0, 8)}.jpg`);
+
+        let docType: KycDocumentType = d.docType;
+        const rawType = String(d.docType || '').toUpperCase();
+        if (rawType === 'CUSTOMER_PHOTO' || rawType === 'PHOTO') {
+          docType = KycDocumentType.CUSTOMER_PHOTO;
+        } else if (rawType === 'SELFIE') {
+          docType = KycDocumentType.SELFIE;
+        } else if (rawType === 'NID_FRONT') {
+          docType = KycDocumentType.NID_FRONT;
+        } else if (rawType === 'NID_BACK') {
+          docType = KycDocumentType.NID_BACK;
+        } else if (rawType === 'PASSPORT') {
+          docType = KycDocumentType.PASSPORT;
+        } else if (rawType === 'DRIVING_LICENSE') {
+          docType = KycDocumentType.DRIVING_LICENSE;
+        } else {
+          docType = KycDocumentType.CUSTOMER_PHOTO;
+        }
+
+        return {
+          docType,
+          storageKey,
+          fileName: d.fileName || `${docType}.jpg`,
+          fileSize: d.fileSize || 1024 * 1024,
+          mimeType: d.mimeType || 'image/jpeg',
+          securePath: storageKey,
+          uploadedAt: new Date(),
+        };
+      });
+
+      // Find existing pending application to update, or create a new one
+      let application = await this.kycModel.findOne({
+        userId: userObjectId,
+        status: KycStatus.PENDING_REVIEW,
+      });
+
+      if (application) {
+        application.idType = dto.idType || 'SMART_NID';
+        application.idNumber = dto.idNumber;
+        application.fullName = dto.fullName || user.fullName;
+        application.fatherName = dto.fatherName;
+        application.motherName = dto.motherName;
+        application.dateOfBirth = parsedDob;
+        application.occupation = dto.occupation;
+        application.presentAddress = dto.presentAddress;
+        application.permanentAddress = dto.permanentAddress;
+        application.nominee = dto.nominee;
+        application.documents = sanitizedDocs;
+        await application.save();
+      } else {
+        application = await this.kycModel.create({
+          userId: userObjectId,
+          status: KycStatus.PENDING_REVIEW,
+          idType: dto.idType || 'SMART_NID',
+          idNumber: dto.idNumber,
+          fullName: dto.fullName || user.fullName,
+          fatherName: dto.fatherName,
+          motherName: dto.motherName,
+          dateOfBirth: parsedDob,
+          occupation: dto.occupation,
+          presentAddress: dto.presentAddress,
+          permanentAddress: dto.permanentAddress,
+          nominee: dto.nominee,
+          documents: sanitizedDocs,
+        });
+      }
+
+      // Update user kycStatus atomically (avoids unselected passwordHash validation failure)
+      await this.userModel.updateOne(
+        { _id: userObjectId },
         {
           $set: {
-            userId: userObjectId,
-            nidNumber: dto.idNumber,
-            fatherName: dto.fatherName,
-            motherName: dto.motherName,
-            dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-            occupation: dto.occupation,
-            presentAddress: dto.presentAddress,
-            permanentAddress: dto.permanentAddress,
-            nominee: dto.nominee,
+            ...(dto.fullName?.trim() ? { fullName: dto.fullName.trim() } : {}),
+            kycStatus: KycStatus.PENDING_REVIEW,
           },
         },
-        { upsert: true, new: true },
       );
+
+      // Non-fatal Profile Synchronization
+      try {
+        await this.profileModel.findOneAndUpdate(
+          { userId: userObjectId },
+          {
+            $set: {
+              userId: userObjectId,
+              nidNumber: dto.idNumber,
+              fatherName: dto.fatherName,
+              motherName: dto.motherName,
+              dateOfBirth: parsedDob,
+              occupation: dto.occupation,
+              presentAddress: dto.presentAddress,
+              permanentAddress: dto.permanentAddress,
+              nominee: dto.nominee,
+            },
+          },
+          { upsert: true, new: true },
+        );
+      } catch (profileErr: any) {
+        this.logger.warn(`Non-blocking profile sync warning: ${profileErr?.message}`);
+      }
+
+      // Non-fatal Audit Log
+      try {
+        await this.auditService.log({
+          actorId: userId,
+          actorRole: user.role || Role.CUSTOMER,
+          action: AuditAction.KYC_SUBMITTED,
+          entityType: 'KycApplication',
+          entityId: application._id.toString(),
+          details: {
+            idType: dto.idType,
+            idNumber: dto.idNumber,
+            docCount: sanitizedDocs.length,
+          },
+        });
+      } catch (auditErr: any) {
+        this.logger.warn(`Non-blocking audit log warning: ${auditErr?.message}`);
+      }
+
+      return application;
     } catch (err: any) {
-      // Non-fatal profile sync fallback
+      this.logger.error(`KYC submission failure: ${err.message}`, err.stack);
+      if (
+        err instanceof BadRequestException ||
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException
+      ) {
+        throw err;
+      }
+      throw new BadRequestException(
+        err.message || 'Failed to submit KYC identity documents. Please verify your data and retry.',
+      );
     }
-
-    await this.auditService.log({
-      actorId: userId,
-      actorRole: Role.CUSTOMER,
-      action: AuditAction.KYC_SUBMITTED,
-      entityType: 'KycApplication',
-      entityId: application._id.toString(),
-      details: {
-        idType: dto.idType,
-        idNumber: dto.idNumber,
-        docCount: dto.documents.length,
-      },
-    });
-
-    return application;
   }
 
   async getMyKycStatus(userId: string) {
